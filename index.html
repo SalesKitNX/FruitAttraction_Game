@@ -122,6 +122,8 @@ textarea{width:100%;border:1px solid #DCE6CF;background:#f7f9f3;border-radius:12
 .livepill.on{background:#4CA226}
 .msgbtn{font-size:11px;font-weight:700;color:#1E4D2B;background:#8BC53F;border-radius:999px;padding:3px 10px}
 .actions1{margin-bottom:8px}
+.actions2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+.rmtag{position:absolute;bottom:8px;left:8px;background:rgba(255,255,255,.92);color:#B4231F;border-radius:8px;padding:4px 8px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid #f0c9c7}
 /* message popups */
 #popups{position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:55;width:100%;max-width:440px;padding:0 12px;display:flex;flex-direction:column;gap:8px}
 .popup{background:#fff;border:1px solid #DCE6CF;border-left:5px solid #6CA22A;border-radius:14px;padding:10px 12px;box-shadow:0 8px 24px rgba(0,0,0,.18)}
@@ -201,6 +203,7 @@ function initFirebase(){
     remoteSub=function(cb,err){ return ff.onSnapshot(ff.collection(db,"teams",TEAM,"records"), cb, err); };
     remotePhotoSet=function(id,data){ return ff.setDoc(ff.doc(db,"teams",TEAM,"photos",id), {d:data, u:(state.user?state.user.name:""), t:Date.now()}); };
     remotePhotoGet=function(id){ return ff.getDoc(ff.doc(db,"teams",TEAM,"photos",id)).then(function(s){ return s.exists()?(s.data().d||null):null; }); };
+    remotePhotoDel=function(id){ return ff.deleteDoc(ff.doc(db,"teams",TEAM,"photos",id)); };
     remoteMsgAdd=function(m){ return ff.addDoc(ff.collection(db,"teams",TEAM,"messages"), m); };
     remoteMsgSub=function(cb,err){ return ff.onSnapshot(ff.collection(db,"teams",TEAM,"messages"), cb, err); };
     startSync();
@@ -208,9 +211,10 @@ function initFirebase(){
 }
 
 /* ===== Photos (small, stored live in Firestore) ===== */
-var remotePhotoSet=null, remotePhotoGet=null;
+var remotePhotoSet=null, remotePhotoGet=null, remotePhotoDel=null;
 function putPhoto(id,data){ if(remotePhotoSet) return remotePhotoSet(String(id),data); return Promise.reject(); }
 function getPhoto(id){ if(remotePhotoGet) return remotePhotoGet(String(id)); return Promise.resolve(null); }
+function removePhoto(id){ photoCache[id]=null; var r=state.records[id]||{}; r.p=false; r.t=Date.now(); r.u=state.user?state.user.name:""; state.records[id]=r; saveRecords(); saveRemote(id); if(remotePhotoDel){ remotePhotoDel(String(id)).catch(function(){}); } if(state.sel&&state.sel.id===id){ document.getElementById("modal").innerHTML=modal(state.sel); var n=document.getElementById("notes"); if(n) n.addEventListener("input",function(e){ setNotes(id,e.target.value); }); } toast("Photo removed"); }
 
 /* ===== Helpers ===== */
 function rec(id){ return state.records[id] || {}; }
@@ -277,6 +281,43 @@ function exportXLSX(){
     download("FruitAttraction2026_"+new Date().toISOString().slice(0,10)+".xlsx", new Blob([out],{type:"application/octet-stream"}));
     toast("Excel exported");
   }).catch(function(){ exportCSVfallback(); });
+}
+function exportCards(){
+  var src=COMPANIES.filter(inScope).filter(function(c){ return rec(c.id).p; });
+  if(!src.length){ toast("No business cards saved yet"); return; }
+  toast("Building cards PDF...");
+  Promise.all([
+    import("https://cdn.jsdelivr.net/npm/jspdf@2.5.2/+esm"),
+    Promise.all(src.map(function(c){ return getPhoto(c.id).then(function(d){ return {c:c,img:d}; }).catch(function(){ return {c:c,img:null}; }); }))
+  ]).then(function(res){
+    var jsPDF=res[0].jsPDF||res[0].default; var items=res[1].filter(function(x){ return x.img; });
+    if(!items.length){ toast("No cards to export"); return; }
+    var doc=new jsPDF({unit:"mm",format:"a4"}); var pw=210, ph=297, m=14, y=m;
+    doc.setFont("helvetica","bold"); doc.setFontSize(16); doc.setTextColor(30,77,43);
+    doc.text("Fruit Attraction 2026 - Business cards", m, y+2); y+=8;
+    doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(120,120,120);
+    doc.text((state.user?state.user.name:"")+"  ·  "+items.length+" cards  ·  "+new Date().toLocaleDateString(), m, y+2); y+=8;
+    items.forEach(function(it){
+      var c=it.c;
+      if(y> ph-70){ doc.addPage(); y=m; }
+      doc.setDrawColor(220,230,207); doc.line(m,y,pw-m,y); y+=6;
+      doc.setFont("helvetica","bold"); doc.setFontSize(12); doc.setTextColor(30,77,43);
+      doc.text(String(c.name), m, y); y+=5;
+      doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(70,70,70);
+      doc.text("Hall "+c.hall+" · Stand "+c.stand+" · "+c.country, m, y); y+=4.5;
+      var line2=[]; if(c.email) line2.push(c.email); if(c.website) line2.push(c.website);
+      if(line2.length){ doc.setTextColor(46,125,178); doc.text(line2.join("    "), m, y); y+=4.5; }
+      var rr=rec(c.id); if(rr.n){ doc.setTextColor(90,90,90); var nn=doc.splitTextToSize("Notes: "+rr.n, pw-2*m); doc.text(nn, m, y); y+=nn.length*4; }
+      y+=2;
+      try{ var pr=doc.getImageProperties(it.img); var iw=pw-2*m; var ih=iw*pr.height/pr.width; var maxh=95;
+        if(ih>maxh){ ih=maxh; iw=ih*pr.width/pr.height; }
+        if(y+ih> ph-m){ doc.addPage(); y=m; }
+        doc.addImage(it.img, "JPEG", m, y, iw, ih); y+=ih+8;
+      }catch(e){ y+=4; }
+    });
+    doc.save("FruitAttraction2026_Cards_"+new Date().toISOString().slice(0,10)+".pdf");
+    toast("Cards exported ("+items.length+")");
+  }).catch(function(e){ toast("Cards export failed"); });
 }
 
 /* ===== Messages (Matteo -> chosen recipients, live) ===== */
@@ -418,7 +459,7 @@ function dashboard(t){
     +'<section class="card"><div class="ctitle">Status mix</div>'
       +(donutData.length?('<div class="donutrow"><div class="donutwrap">'+donut(donutData)+'</div><div class="leg">'+pieRows+'</div></div>'):'<div class="muted center pad">No progress yet - set a status to start scoring.</div>')
     +'</section>'
-    +'<section class="actions1"><button class="btn primary wide" data-action="xlsx">⬇ Export to Excel</button></section>'
+    +'<section class="actions2"><button class="btn primary" data-action="xlsx">⬇ Excel</button><button class="btn ghost" data-action="cards">⬇ Business cards</button></section>'
     +'<p class="muted center small">'+(liveMode?"Live sync on - shared with the team in real time":"Offline - changes save locally and sync when back online")+'</p>'
   +'</main>';
 }
@@ -474,7 +515,7 @@ function modal(c){
       +'<span>'+x.short+'</span><small>+'+x.points+'</small></button>'; }).join("");
   var photo=photoCache[c.id];
   var photoHtml = photo
-    ? '<div class="photowrap"><img src="'+photo+'"/><label class="reptag">📷 Replace<input type="file" accept="image/*" capture="environment" data-action="photo" data-id="'+c.id+'" hidden></label></div>'
+    ? '<div class="photowrap"><img src="'+photo+'"/><label class="reptag">📷 Replace<input type="file" accept="image/*" capture="environment" data-action="photo" data-id="'+c.id+'" hidden></label><button class="rmtag" data-action="rmphoto" data-id="'+c.id+'">🗑 Remove</button></div>'
     : '<label class="photoadd">📷 Snap the business card<input type="file" accept="image/*" capture="environment" data-action="photo" data-id="'+c.id+'" hidden></label>';
   var links="";
   if(c.website) links+='<a class="lnk" href="https://'+esc(c.website.replace(/^https?:\/\//,""))+'" target="_blank" rel="noreferrer">🌐 '+esc(c.website)+'</a>';
@@ -514,6 +555,8 @@ document.addEventListener("click", function(e){
   else if(a==="fgroup"){ state.fGroup=el.getAttribute("data-val"); render(); }
   else if(a==="fstatus"){ state.fStatus=el.getAttribute("data-val"); render(); }
   else if(a==="xlsx"){ exportXLSX(); }
+  else if(a==="cards"){ exportCards(); }
+  else if(a==="rmphoto"){ removePhoto(+el.getAttribute("data-id")); }
   else if(a==="dismiss"){ var mid=el.getAttribute("data-id"); if(dismissed.indexOf(mid)<0){ dismissed.push(mid); saveDismissed(); } renderPopups(); }
   else if(a==="compose"){ state.compose=true; renderCompose(); }
   else if(a==="compose-cancel"){ if(a==="compose-cancel" && el.className==="ovl" && e.target!==el) return; state.compose=false; renderCompose(); }
