@@ -139,6 +139,8 @@ textarea{width:100%;border:1px solid #DCE6CF;background:#f7f9f3;border-radius:12
 .rcptall{background:#EDF4E1}
 .rcptlist{margin-top:2px}
 
+[data-action],button,.tab,.ccard,.rankrow,.sbtn,.trackbtn,.assignbtn,.chip,.fchip,.actbtn,.feeddel,.xbtn,.msgbtn,.userchip{cursor:pointer;touch-action:manipulation}
+
 .hsub{margin-top:2px}
 .teamtag{display:inline-block;color:#fff;border-radius:999px;padding:2px 9px;font-size:11px;font-weight:700}
 .tabs{flex-wrap:wrap}
@@ -518,6 +520,8 @@ function donut(data){ var total=data.reduce(function(a,d){return a+d.v;},0); if(
   return '<svg width="'+s+'" height="'+s+'" style="transform:rotate(-90deg)">'+segs+'</svg>'; }
 
 /* ===== Render ===== */
+window.goTab=function(e,t){ if(e){e.stopPropagation();e.preventDefault();} state.tab=t; render(); window.scrollTo(0,0); };
+var APP_VERSION="v3 · 02/10";
 var app;
 function render(){
   app=app||document.getElementById("app");
@@ -567,7 +571,7 @@ function logout(){ state.user=null; state.team=null; state.tab="dashboard"; save
 function header(t){
   var u=state.user; var tm=curTeam();
   var tabs=[["dashboard","Dashboard"]]; if(teamCompetes()) tabs.push(["ranking","Ranking"]); tabs.push(["map","Map"],["companies","Companies"],["extra","Extra"]);
-  var tabhtml=tabs.map(function(x){ return '<button class="tab'+(state.tab===x[0]?" on":"")+'" data-action="tab" data-tab="'+x[0]+'">'+x[1]+'</button>'; }).join("");
+  var tabhtml=tabs.map(function(x){ return '<button class="tab'+(state.tab===x[0]?" on":"")+'" data-action="tab" data-tab="'+x[0]+'" onclick="goTab(event,\''+x[0]+'\')">'+x[1]+'</button>'; }).join("");
   var teamSel = '<span class="teamtag" style="background:'+tm.color+'">'+esc(tm.name)+'</span>';
   return '<header class="hd">'
     +'<div class="hdrow"><div class="brand"><div class="logotile"><img src="'+LOGO+'"/></div>'
@@ -576,7 +580,7 @@ function header(t){
     +'<div class="hdrow2"><button class="userchip" data-action="logout">'+esc(u.name)+(u.leader?" · leader":"")+' ⎋</button>'
       +'<span class="livepill '+(liveMode?"on":"")+'">'+(liveMode?"● Live":"○ Offline")+'</span>'
       +(canMessage()?'<button class="msgbtn" data-action="compose">📣 Message</button>':'')+'</div>'
-    +'<div class="tabs">'+tabhtml+'</div></header>';
+    +'<div class="tabs">'+tabhtml+'</div><div style="font-size:10px;opacity:.5;text-align:right;padding:2px 8px">'+APP_VERSION+'</div></header>';
 }
 
 function dashboard(t){
@@ -753,7 +757,7 @@ function closeModal(){ state.sel=null; var m=document.getElementById("modal"); m
 
 /* ===== Events ===== */
 function findAction(el){ while(el&&el!==document){ if(el.getAttribute&&el.getAttribute("data-action")) return el; el=el.parentNode; } return null; }
-document.addEventListener("click", function(e){ var el=findAction(e.target); if(!el) return; var a=el.getAttribute("data-action");
+document.body.addEventListener("click", function(e){ var el=findAction(e.target); if(!el) return; var a=el.getAttribute("data-action");
   if(a==="tab"){ state.tab=el.getAttribute("data-tab"); render(); }
   else if(a==="logout"){ logout(); }
   else if(a==="open"){ var id=+el.getAttribute("data-id"); var c=companies().filter(function(x){return x.id===id;})[0]; if(c) openModal(c); }
@@ -790,7 +794,7 @@ document.addEventListener("click", function(e){ var el=findAction(e.target); if(
       addMessage(teamKey, {text:txt, to:to, from:state.user.first, fromName:state.user.name, t:Date.now()}).then(function(){ toast("Message sent"); }).catch(function(){ toast("Message not sent"); });
       state.compose=false; renderCompose(); }
 });
-document.addEventListener("change", function(e){ var el=e.target; if(!el) return;
+document.body.addEventListener("change", function(e){ var el=e.target; if(!el) return;
   if(el.getAttribute&&el.getAttribute("data-action")==="scteam"){ state.scTeam=el.value; state.scPerson=""; if(FB) scorerSubscribe(); render(); return; }
   if(el.getAttribute&&el.getAttribute("data-action")==="scperson"){ state.scPerson=el.value; return; }
   if(el.getAttribute&&el.getAttribute("data-action")==="photo"){ var id=+el.getAttribute("data-id"); var f=el.files&&el.files[0]; if(!f) return;
@@ -798,7 +802,7 @@ document.addEventListener("change", function(e){ var el=e.target; if(!el) return
       return putPhoto(id,data).then(function(){ var r=state.records[id]||{}; r.p=true; r.t=Date.now(); r.u=state.user?state.user.first:""; state.records[id]=r; saveRemote(id);
         if(state.sel&&state.sel.id===id){ document.getElementById("modal").innerHTML=modal(state.sel); wireNotes(); } toast("Photo saved"); }); }).catch(function(){ toast("Photo not saved"); }); }
 });
-document.addEventListener("input", function(e){ if(e.target&&e.target.id==="q"){ state.q=e.target.value; var pos=e.target.selectionStart; render(); var nq=document.getElementById("q"); if(nq){ nq.focus(); try{nq.setSelectionRange(pos,pos);}catch(_){} } } });
+document.body.addEventListener("input", function(e){ if(e.target&&e.target.id==="q"){ state.q=e.target.value; var pos=e.target.selectionStart; render(); var nq=document.getElementById("q"); if(nq){ nq.focus(); try{nq.setSelectionRange(pos,pos);}catch(_){} } } });
 
 /* ===== Boot ===== */
 loadLocal();
