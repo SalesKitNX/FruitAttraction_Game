@@ -300,7 +300,7 @@ function subscribeRanking(){
   RANK_ORDER.forEach(function(tk){ var tok=TEAMS[tk].token;
     if(!state.teamTotals[tk]) state.teamTotals[tk]={sales:0,act:0,done:0};
     var u1=FB.onSnapshot(FB.collection(DB,"teams",tok,"records"), function(snap){
-      var sp=0, done=0, bp={}; snap.forEach(function(d){ var r=d.data()||{}; var s=r.s||"not_started"; var pt=(STATUS[s]?STATUS[s].points:0);
+      var sp=0, done=0, bp={}; snap.forEach(function(d){ var r=d.data()||{}; var s=(r.s&&STATUS[r.s])?r.s:"not_started"; var pt=STATUS[s].points;
         sp+=pt; if(s!=="not_started"){ done++; var who=r.u||"?"; bp[who]=(bp[who]||0)+pt; } });
       var tt=state.teamTotals[tk]||{}; tt.sales=sp; tt.done=done; tt.salesByPerson=bp; state.teamTotals[tk]=tt; lastSync=new Date();
       if(state.tab==="ranking"||state.tab==="dashboard"||(state.user&&state.user.scorer)) render();
@@ -352,7 +352,7 @@ function addMessage(teamKey,m){ if(!DB) return Promise.reject(); var tok=TEAMS[t
 
 /* ===== Helpers ===== */
 function rec(id){ return state.records[id]||{}; }
-function statusOf(id){ return (state.records[id]&&state.records[id].s)||"not_started"; }
+function statusOf(id){ var v=state.records[id]&&state.records[id].s; return (v&&STATUS[v])?v:"not_started"; }
 function esc(s){ return (s==null?"":String(s)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 
 function activityPoints(){ var p=0; (state.extra||[]).forEach(function(e){ p+=(e.points||0); }); return p; }
@@ -367,7 +367,7 @@ function totals(){
     coverage: list.length? done/list.length : 0 };
 }
 function setStatus(id,s){ var r=state.records[id]||{}; r.s=s; r.t=Date.now(); r.u=state.user?state.user.first:""; state.records[id]=r; render(); saveRemote(id); }
-function trackOf(id){ return state.records[id]&&state.records[id].track; }
+function trackOf(id){ var v=state.records[id]&&state.records[id].track; return TRACKS[v]?v:undefined; }
 function setTrack(id,tr){ var r=state.records[id]||{}; var cur=r.track;
   if(tr==="toggle") tr=(cur==="existing"?"new":"existing");
   r.track=tr; if(r.s && TRACKS[tr].indexOf(r.s)<0) r.s="not_started";
@@ -521,7 +521,7 @@ function donut(data){ var total=data.reduce(function(a,d){return a+d.v;},0); if(
 
 /* ===== Render ===== */
 window.goTab=function(e,t){ if(e){e.stopPropagation();e.preventDefault();} state.tab=t; render(); window.scrollTo(0,0); };
-var APP_VERSION="v3 · 02/10";
+var APP_VERSION="v4 · 02/10";
 var app;
 function render(){
   app=app||document.getElementById("app");
@@ -536,7 +536,8 @@ function render(){
     else if(state.tab==="map") html+=mapView(t);
     else if(state.tab==="extra") html+=extraView(t);
     else html+=companiesView();
-  } catch(err){ html='<div style="padding:20px;font-family:sans-serif"><b>Something glitched on this view.</b><br>Tap another tab, or reload. ('+(err&&err.message?err.message:err)+')</div>'+header(totals()); }
+  } catch(err){ var hh=""; try{ hh=header(totals()); }catch(e2){}
+    html=hh+'<div style="padding:20px;font-family:sans-serif"><b>Something glitched on this view.</b><br>Tap another tab, or reload. ('+esc(err&&err.message?err.message:err)+')</div>'; }
   app.innerHTML=html; renderPopups(); renderCompose();
 }
 
