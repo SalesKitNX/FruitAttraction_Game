@@ -125,8 +125,9 @@ textarea{width:100%;border:1px solid #DCE6CF;background:#f7f9f3;border-radius:12
 .actions2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
 .rmtag{position:absolute;bottom:8px;left:8px;background:rgba(255,255,255,.92);color:#B4231F;border-radius:8px;padding:4px 8px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid #f0c9c7}
 /* message popups */
-#popups{position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:55;width:100%;max-width:440px;padding:0 12px;display:flex;flex-direction:column;gap:8px}
-.popup{background:#fff;border:1px solid #DCE6CF;border-left:5px solid #6CA22A;border-radius:14px;padding:10px 12px;box-shadow:0 8px 24px rgba(0,0,0,.18)}
+#popups{position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:55;width:100%;max-width:440px;padding:0 12px;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+
+.popup{pointer-events:auto;background:#fff;border:1px solid #DCE6CF;border-left:5px solid #6CA22A;border-radius:14px;padding:10px 12px;box-shadow:0 8px 24px rgba(0,0,0,.18)}
 .popuphd{display:flex;justify-content:space-between;align-items:center}
 .popupfrom{font-size:12px;font-weight:800;color:#1E4D2B}
 .popupx{background:none;color:#9aa6a0;font-size:15px;padding:2px 4px}
@@ -523,12 +524,15 @@ function render(){
   if(!state.user){ app.innerHTML=loginView(); wireLogin(); renderPopups(); renderCompose(); return; }
   if(state.user.scorer){ app.innerHTML=scorerLayout(); renderPopups(); return; }
   if(!state.team) state.team=state.user.team;
-  var t=totals(); var html=header(t);
-  if(state.tab==="dashboard") html+=dashboard(t);
-  else if(state.tab==="ranking") html+=rankingView();
-  else if(state.tab==="map") html+=mapView(t);
-  else if(state.tab==="extra") html+=extraView(t);
-  else html+=companiesView();
+  var html="";
+  try {
+    var t=totals(); html=header(t);
+    if(state.tab==="dashboard") html+=dashboard(t);
+    else if(state.tab==="ranking") html+=rankingView();
+    else if(state.tab==="map") html+=mapView(t);
+    else if(state.tab==="extra") html+=extraView(t);
+    else html+=companiesView();
+  } catch(err){ html='<div style="padding:20px;font-family:sans-serif"><b>Something glitched on this view.</b><br>Tap another tab, or reload. ('+(err&&err.message?err.message:err)+')</div>'+header(totals()); }
   app.innerHTML=html; renderPopups(); renderCompose();
 }
 
