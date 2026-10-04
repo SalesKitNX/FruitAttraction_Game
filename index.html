@@ -125,7 +125,7 @@ textarea{width:100%;border:1px solid #DCE6CF;background:#f7f9f3;border-radius:12
 .actions2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
 .rmtag{position:absolute;bottom:8px;left:8px;background:rgba(255,255,255,.92);color:#B4231F;border-radius:8px;padding:4px 8px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid #f0c9c7}
 /* message popups */
-#popups{position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:55;width:100%;max-width:440px;padding:0 12px;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+#popups{position:fixed;bottom:12px;left:50%;transform:translateX(-50%);z-index:55;width:100%;max-width:440px;padding:0 12px;display:flex;flex-direction:column;gap:8px;pointer-events:none}
 
 .popup{pointer-events:auto;background:#fff;border:1px solid #DCE6CF;border-left:5px solid #6CA22A;border-radius:14px;padding:10px 12px;box-shadow:0 8px 24px rgba(0,0,0,.18)}
 .popuphd{display:flex;justify-content:space-between;align-items:center}
@@ -521,7 +521,7 @@ function donut(data){ var total=data.reduce(function(a,d){return a+d.v;},0); if(
 
 /* ===== Render ===== */
 window.goTab=function(e,t){ if(e){e.stopPropagation();e.preventDefault();} state.tab=t; render(); window.scrollTo(0,0); };
-var APP_VERSION="v4 · 02/10";
+var APP_VERSION="v5 · 04/10";
 var app;
 function render(){
   app=app||document.getElementById("app");
@@ -614,7 +614,9 @@ function dashboard(t){
 }
 
 function rankCard(){
-  var rows=RANK_ORDER.map(function(tk){ var tt=state.teamTotals[tk]||{pts:0,done:0}; return {tk:tk,name:TEAMS[tk].name,color:TEAMS[tk].color,pts:tt.pts,done:tt.done}; });
+  var rows=RANK_ORDER.map(function(tk){ var tt=state.teamTotals[tk]||{}; var pts=(tt.sales||0)+(tt.act||0), done=tt.done||0;
+    if(tk===state.team){ try{ var mt=totals(); pts=mt.pts; done=mt.done; }catch(e){} }
+    return {tk:tk,name:TEAMS[tk].name,color:TEAMS[tk].color,pts:pts,done:done}; });
   rows.sort(function(a,b){ return b.pts-a.pts; });
   var max=Math.max(1, rows[0].pts);
   return '<section class="card"><div class="ctitle">🏆 Team ranking (live)</div>'
