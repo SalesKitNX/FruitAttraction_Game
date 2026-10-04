@@ -220,6 +220,24 @@ textarea{width:100%;border:1px solid #DCE6CF;background:#f7f9f3;border-radius:12
 .linklike{background:none;color:#4E7D2C;font-weight:700;font-size:12px;padding:0;cursor:pointer}
 
 #toast{pointer-events:none}
+
+.indname{flex:0 0 96px;min-width:0;display:flex;flex-direction:column;line-height:1.15}
+.indn{font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.indt{font-size:10px;color:#8a9784;display:flex;align-items:center;gap:4px;margin-top:1px}
+.indt i{display:inline-block;width:6px;height:6px;border-radius:50%}
+
+.assigngrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.assignbtn{min-width:0;padding:10px 9px}
+.hdrow2{gap:6px}
+.hdrow2 .msgbtn{padding:3px 9px}
+
+.abname{white-space:normal;overflow:visible;line-height:1.2}
+.customrow{min-width:0}
+.customrow .cinput{width:56px;min-width:0;flex:0 0 56px}
+.customrow .cgrow{flex:1 1 auto;min-width:0;width:auto}
+.customrow .btn{flex:0 0 auto}
+.tabs{flex-wrap:nowrap}
+.tab{flex:1 1 auto;min-width:0;padding:7px 3px;font-size:12px;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -277,13 +295,13 @@ var HALLS = {
 var TEAMS = {
   A:  { key:"A", name:"Group A", token:"fa26-03e030ee0f5af990", color:"#2E7DB2",
         halls:[5,7,9], leader:"Luis", compete:true, pwd:"VentiMax2026@",
-        members:["Luis Zelman","Franck","Gil Porat","Eyal Linn","Raul Romero"], companies:COMPANIES_A },
+        members:["Luis","Franck","Gil","Eyal","Raul"], companies:COMPANIES_A },
   B:  { key:"B", name:"Group B", token:"fa26-31e91a2dee6680f5", color:"#E0A23B",
         halls:[3,4,6], leader:"Ed", compete:true, pwd:"ElastiNet2026@",
-        members:["Ed Leggett","Christophe","Omer Noy","Bar Paz","Mario","Charlie Tompson"], companies:COMPANIES_B },
+        members:["Ed","Christophe","Omer","Bar","Mario","Charlie"], companies:COMPANIES_B },
   C:  { key:"C", name:"Group C", token:"fa26-68cb341507e58d81", color:"#4E7D2C",
         halls:[8,10,12,14], leader:"Matteo", compete:true, pwd:"InnoVent2026@",
-        members:["Matteo","Russell Teiffel","Rotem Haruvi","David Alan Romo","Avishay Reef"], companies:COMPANIES_C }
+        members:["Matteo","Russell","Rotem","David","Avishay"], companies:COMPANIES_C }
 };
 var TEAM_ORDER = ["A","B","C"];
 var RANK_ORDER = TEAM_ORDER.filter(function(tk){ return TEAMS[tk].compete; });
@@ -297,7 +315,7 @@ TEAM_ORDER.forEach(function(tk){ var t=TEAMS[tk];
   });
 });
 
-USERS["ronit"]={ name:"Ronit Ben Simon", first:"Ronit", scorer:true };
+USERS["ronit"]={ name:"Ronit", first:"Ronit", scorer:true };
 
 var REQUIRE_PASSWORD = true;
 var DEFAULT_PASSWORD = "InnoVent2026@";   // fallback; each team sets its own pwd
@@ -312,7 +330,7 @@ function curTeam(){ return TEAMS[state.team]; }
 function companies(){ return curTeam()? curTeam().companies : []; }
 
 function loadLocal(){
-  try{ var u=localStorage.getItem("fa26_user"); if(u){ var p=JSON.parse(u); if(p&&p.key) state.user=p; } }catch(e){}
+  try{ var u=localStorage.getItem("fa26_user"); if(u){ var p=JSON.parse(u); if(p&&p.key){ state.user=p; if(USERS[p.key]) state.user.name=USERS[p.key].first; } } }catch(e){}
 }
 function saveUser(){ try{ state.user? localStorage.setItem("fa26_user", JSON.stringify(state.user)) : localStorage.removeItem("fa26_user"); }catch(e){} }
 
@@ -506,8 +524,7 @@ function visibleMessages(){ return (state.messages||[]).filter(function(m){ retu
 var QUICK=["👍 Got it","✅ Done","🏃 On it","🔥 Let's go","📞 Call me"];
 function fmtTime(t){ if(!t) return ""; var d=new Date(t), n=new Date();
   var hm=d.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}); return d.toDateString()===n.toDateString()? hm : d.toLocaleDateString([], {day:"2-digit",month:"2-digit"})+" "+hm; }
-function fullNameOf(tk,first){ if(first==="Ronit") return "Ronit Ben Simon"; var t=TEAMS[tk]; if(!t) return first;
-  for(var i=0;i<t.members.length;i++){ if(t.members[i].split(" ")[0]===first) return t.members[i]; } return first; }
+function fullNameOf(tk,first){ return first; }
 function msgById(id){ var a=state.messages||[]; for(var i=0;i<a.length;i++){ if(a[i].id===id) return a[i]; } return null; }
 function quoteHtml(m){ if(!m.replyTo) return ""; var o=msgById(m.replyTo); var q=o?o.text:(m.quote||""); if(!q) return "";
   q=String(q); if(q.length>70) q=q.slice(0,70)+"…"; return '<div class="mquote">↪ '+esc(q)+'</div>'; }
@@ -524,7 +541,7 @@ function renderPopups(){ var box=document.getElementById("popups"); if(!box) ret
   if(!state.user||state.chats||state.compose){ box.innerHTML=""; return; }
   keepInputs(box,function(){ box.innerHTML=visibleMessages().map(function(m){
     var isReact=m.kind==="react", isReply=!!m.replyTo;
-    var head=isReply?(isReact?'💬 '+esc(m.fromName||m.from)+' reacted':'💬 '+esc(m.fromName||m.from)+' replied'):'📣 '+esc(m.fromName||m.from);
+    var head=isReply?(isReact?'💬 '+esc(m.from)+' reacted':'💬 '+esc(m.from)+' replied'):'📣 '+esc(m.from);
     var acts='';
     if(!isReact){
       if(state.replyOpen===m.id){
@@ -581,7 +598,7 @@ function chatsView(){ var ths=buildThreads();
     var label=isAll?("Everyone · "+TEAMS[tk].name):fullNameOf(tk,who);
     var me=state.user.first;
     var bubbles=(t?t.msgs:[]).map(function(m){ var mine=m.from===me;
-      return '<div class="bub '+(mine?"mine":"theirs")+'">'+(isAll&&!mine?'<div class="bubwho">'+esc(m.fromName||m.from)+'</div>':'')+quoteHtml(m)
+      return '<div class="bub '+(mine?"mine":"theirs")+'">'+(isAll&&!mine?'<div class="bubwho">'+esc(m.from)+'</div>':'')+quoteHtml(m)
         +'<div class="bubtxt">'+esc(m.text)+'</div><div class="bubtime">'+fmtTime(m.t)+(mine&&m.to&&m.to.length>1&&!isAll?' · group msg':'')+'</div></div>'; }).join("")
       || '<div class="muted center pad">No messages yet. Say hi 👋</div>';
     return '<div class="ovl" data-action="chats-close"><div class="sheet chatsheet" data-stop="1"><div class="grab"></div>'
@@ -661,7 +678,7 @@ function donut(data){ var total=data.reduce(function(a,d){return a+d.v;},0); if(
 
 /* ===== Render ===== */
 window.goTab=function(e,t){ if(e){e.stopPropagation();e.preventDefault();} state.tab=t; render(); window.scrollTo(0,0); };
-var APP_VERSION="v6 · 04/10";
+var APP_VERSION="v8 · 04/10";
 var app;
 function render(){
   app=app||document.getElementById("app");
@@ -718,7 +735,7 @@ function header(t){
     +'<div class="hdrow"><div class="brand"><div class="logotile"><img src="'+LOGO+'"/></div>'
       +'<div><div class="htitle">Fruit Attraction 2026</div><div class="hsub">'+teamSel+'</div></div></div>'
       +'<div class="teampts"><div class="big">'+t.pts+'</div><div class="cap">team pts</div></div></div>'
-    +'<div class="hdrow2"><button class="userchip" data-action="logout">'+esc(u.name)+(u.leader?" · leader":"")+' ⎋</button>'
+    +'<div class="hdrow2"><button class="userchip" data-action="logout">'+esc(u.name)+(u.leader?" 👑":"")+' ⎋</button>'
       +'<span class="livepill '+(liveMode?"on":"")+'">'+(liveMode?"● Live":"○ Offline")+'</span>'
       +(canMessage()?'<button class="msgbtn" data-action="compose">📣 Message</button>'+chatsBtn():'')+'</div>'
     +'<div class="tabs">'+tabhtml+'</div><div style="font-size:10px;opacity:.5;text-align:right;padding:2px 8px">'+APP_VERSION+'</div></header>';
@@ -833,10 +850,9 @@ function topIndividuals(){
 function topIndCard(){ var arr=topIndividuals(); var max=Math.max(1, arr[0]?arr[0].pts:1);
   return '<section class="card"><div class="ctitle">🏅 Top scorers — individual</div>'
     +arr.map(function(r,i){ return '<div class="rankrow"><span class="rankpos">'+(i+1)+'</span>'
-      +'<span class="rankname" style="color:'+r.color+'">'+esc(r.name)+(r.leader?' 👑':'')+'</span>'
+      +'<span class="indname"><span class="indn" style="color:'+r.color+'">'+esc(r.name)+(r.leader?' 👑':'')+'</span><span class="indt"><i style="background:'+r.color+'"></i>'+esc(r.team)+'</span></span>'
       +'<span class="rankbarwrap"><span class="rankbar" style="width:'+Math.round(r.pts/max*100)+'%;background:'+r.color+'"></span></span>'
-      +'<span class="rankpts">'+r.pts+'</span></div>'
-      +'<div class="indteam">'+esc(r.team)+'</div>'; }).join("")+'</section>';
+      +'<span class="rankpts">'+r.pts+'</span></div>'; }).join("")+'</section>';
 }
 function scorerLayout(){
   var u=state.user;
@@ -854,7 +870,7 @@ function scorerLayout(){
   return '<header class="hd"><div class="hdrow"><div class="brand"><div class="logotile"><img src="'+LOGO+'"/></div>'
       +'<div><div class="htitle">Extra points · Referee</div><div class="hsub"><span class="teamtag" style="background:#8E44AD">'+esc(u.name)+'</span></div></div></div>'
       +'<div class="teampts"><div class="big">🎖️</div></div></div>'
-      +'<div class="hdrow2"><button class="userchip" data-action="logout">'+esc(u.name)+' · referee ⎋</button>'
+      +'<div class="hdrow2"><button class="userchip" data-action="logout">'+esc(u.name)+' ⎋</button>'
       +'<span class="livepill '+(liveMode?"on":"")+'">'+(liveMode?"● Live":"○ Offline")+'</span>'
       +'<button class="msgbtn" data-action="compose">📣 Message</button>'+chatsBtn()+'</div></header>'
     +'<main>'
@@ -943,7 +959,7 @@ document.body.addEventListener("click", function(e){ var el=findAction(e.target)
         if(everyone){ RANK_ORDER.forEach(function(tk){ per[tk].whole=true; }); }
         else { var ws=document.querySelectorAll(".scwhole"); for(var wi=0;wi<ws.length;wi++){ if(ws[wi].checked) per[ws[wi].getAttribute("data-team")].whole=true; }
           var cs=document.querySelectorAll(".scchk"); for(var ci=0;ci<cs.length;ci++){ if(cs[ci].checked) per[cs[ci].getAttribute("data-team")].persons.push(cs[ci].value); } }
-        var sent=0; RANK_ORDER.forEach(function(tk){ var pt=per[tk]; if(pt.whole){ addMessage(tk,{text:txt,to:["all"],from:"Ronit",fromName:"Ronit Ben Simon",t:Date.now()}).catch(function(){}); sent++; } else if(pt.persons.length){ addMessage(tk,{text:txt,to:pt.persons,from:"Ronit",fromName:"Ronit Ben Simon",t:Date.now()}).catch(function(){}); sent++; } });
+        var sent=0; RANK_ORDER.forEach(function(tk){ var pt=per[tk]; if(pt.whole){ addMessage(tk,{text:txt,to:["all"],from:"Ronit",fromName:"Ronit",t:Date.now()}).catch(function(){}); sent++; } else if(pt.persons.length){ addMessage(tk,{text:txt,to:pt.persons,from:"Ronit",fromName:"Ronit",t:Date.now()}).catch(function(){}); sent++; } });
         if(!sent){ toast("Pick recipients"); return; } toast("Message sent"); state.compose=false; renderCompose(); renderPopups(); return; }
       var teamKey=state.user.team;
       var to; if(document.getElementById("rcptall").checked){ to=["all"]; }
