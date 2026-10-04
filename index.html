@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1E4D2B"/>
+<meta name="apple-mobile-web-app-title" content="FA 2026"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png"/>
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png"/>
+<link rel="manifest" href="manifest.webmanifest"/>
 <title>Fruit Attraction 2026</title>
 <style>
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -238,6 +244,8 @@ textarea{width:100%;border:1px solid #DCE6CF;background:#f7f9f3;border-radius:12
 .customrow .btn{flex:0 0 auto}
 .tabs{flex-wrap:nowrap}
 .tab{flex:1 1 auto;min-width:0;padding:7px 3px;font-size:12px;white-space:nowrap}
+.hd{padding-top:calc(14px + env(safe-area-inset-top))}
+#popups{bottom:calc(12px + env(safe-area-inset-bottom))}
 </style>
 </head>
 <body>
@@ -678,7 +686,7 @@ function donut(data){ var total=data.reduce(function(a,d){return a+d.v;},0); if(
 
 /* ===== Render ===== */
 window.goTab=function(e,t){ if(e){e.stopPropagation();e.preventDefault();} state.tab=t; render(); window.scrollTo(0,0); };
-var APP_VERSION="v8 · 04/10";
+var APP_VERSION="v9 · 04/10";
 var app;
 function render(){
   app=app||document.getElementById("app");
