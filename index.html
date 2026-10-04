@@ -184,6 +184,42 @@ textarea{width:100%;border:1px solid #DCE6CF;background:#f7f9f3;border-radius:12
 .rcptgroup{border:1px solid #DCE6CF;border-radius:12px;padding:8px 10px;margin-bottom:8px}
 .rcptgroup .rcptall{display:block;margin-bottom:6px}
 .rcptgroup .rcptlist{display:flex;flex-wrap:wrap;gap:6px}
+
+.qrow{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.qchip{font-size:11.5px;font-weight:700;background:#EEF3E6;color:#1E4D2B;border:1px solid #DCE6CF;border-radius:999px;padding:5px 9px;cursor:pointer;touch-action:manipulation}
+.qchip:active{transform:scale(.96)}
+.writeq{background:#1E4D2B;color:#fff;border-color:#1E4D2B}
+.sendq{background:#4E7D2C;color:#fff;border-color:#4E7D2C}
+.ghostq{background:#fff}
+.replybox{margin-top:8px}
+.replybox textarea,.chatin textarea{width:100%;border:1px solid #DCE6CF;background:#f7f9f3;border-radius:10px;padding:8px;font-size:14px;font-family:inherit;outline:none;resize:none;box-sizing:border-box}
+.replyrow{display:flex;justify-content:flex-end;gap:6px;margin-top:6px}
+.popup.isreply{border-left-color:#2E86C1}
+.mquote{font-size:11.5px;color:#6b7a63;background:#f3f6ee;border-left:3px solid #c9d8b6;border-radius:6px;padding:4px 7px;margin-top:4px}
+.chatsbtn{position:relative;background:#fff}
+.ubadge{display:inline-block;min-width:16px;height:16px;line-height:16px;text-align:center;background:#D0352B;color:#fff;border-radius:999px;font-size:10px;font-weight:800;padding:0 4px;margin-left:5px}
+.threadlist{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+.thread{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:#fff;border:1px solid #DCE6CF;border-radius:12px;padding:10px;cursor:pointer;font-family:inherit}
+.thav{flex:0 0 34px;height:34px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:800;font-size:14px}
+.thmid{flex:1;min-width:0}
+.thname{font-size:13.5px;font-weight:800;color:#173322}
+.thlast{font-size:12px;color:#6b7a63;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.thright{flex:0 0 auto;text-align:right}
+.thtime{font-size:10.5px;color:#9aa6a0}
+.chatsheet{display:flex;flex-direction:column;height:86vh}
+.chatscroll{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding:8px 2px;background:#f7f9f3;border-radius:12px;margin:6px 0}
+.bub{max-width:80%;border-radius:14px;padding:7px 10px;font-size:14px}
+.bub.mine{align-self:flex-end;background:#1E4D2B;color:#fff;border-bottom-right-radius:4px}
+.bub.theirs{align-self:flex-start;background:#fff;border:1px solid #DCE6CF;border-bottom-left-radius:4px}
+.bub.mine .mquote{background:rgba(255,255,255,.12);color:#dfe9d3;border-left-color:#8BC53F}
+.bubwho{font-size:11px;font-weight:800;color:#4E7D2C}
+.bubtxt{white-space:pre-wrap;word-break:break-word}
+.bubtime{font-size:10px;opacity:.6;margin-top:2px;text-align:right}
+.chatin{display:flex;gap:8px;align-items:flex-end}
+.chatin .btn{flex:0 0 auto}
+.linklike{background:none;color:#4E7D2C;font-weight:700;font-size:12px;padding:0;cursor:pointer}
+
+#toast{pointer-events:none}
 </style>
 </head>
 <body>
@@ -324,11 +360,21 @@ function subscribeTeam(){
     var arr=[]; snap.forEach(function(d){ var o=d.data()||{}; o.id=d.id; arr.push(o); }); state.extra=arr; render();
   }, function(){});
   unsubMsg=FB.onSnapshot(FB.collection(DB,"teams",tok,"messages"), function(snap){
-    var arr=[]; snap.forEach(function(d){ var o=d.data()||{}; o.id=d.id; arr.push(o); }); state.messages=arr; renderPopups();
+    var arr=[]; var tk0=state.user&&state.user.team; snap.forEach(function(d){ var o=d.data()||{}; o.id=d.id; o._tk=tk0; arr.push(o); }); state.messages=arr; onMessages();
   }, function(){});
 }
+var scMsgUnsub=[], scMsgs={};
+function scorerMsgSubscribe(){
+  if(!FB||scMsgUnsub.length) return;
+  RANK_ORDER.forEach(function(tk){
+    scMsgUnsub.push(FB.onSnapshot(FB.collection(DB,"teams",TEAMS[tk].token,"messages"), function(snap){
+      var arr=[]; snap.forEach(function(d){ var o=d.data()||{}; o.id=d.id; o._tk=tk; arr.push(o); }); scMsgs[tk]=arr;
+      var all=[]; RANK_ORDER.forEach(function(k){ all=all.concat(scMsgs[k]||[]); }); state.messages=all; onMessages();
+    }, function(){}));
+  });
+}
 function scorerSubscribe(){
-  if(!FB) return; if(unsubScorer){try{unsubScorer();}catch(e){}} state.extra=[];
+  if(!FB) return; scorerMsgSubscribe(); if(unsubScorer){try{unsubScorer();}catch(e){}} state.extra=[];
   var tok=TEAMS[state.scTeam].token;
   unsubScorer=FB.onSnapshot(FB.collection(DB,"teams",tok,"extra"), function(snap){
     var arr=[]; snap.forEach(function(d){ var o=d.data()||{}; o.id=d.id; arr.push(o); }); state.extra=arr;
@@ -454,16 +500,108 @@ function loadDismissed(){ try{ return JSON.parse(localStorage.getItem("fa26_dism
 var dismissed=loadDismissed();
 function saveDismissed(){ try{ localStorage.setItem("fa26_dismissed", JSON.stringify(dismissed)); }catch(e){} }
 function addressedToMe(m){ if(!state.user) return false; if(m.from===state.user.first) return false;
-  var to=m.to||[]; return to.indexOf("all")>=0 || to.indexOf(state.user.first)>=0; }
-function visibleMessages(){ return (state.messages||[]).filter(function(m){ return addressedToMe(m)&&dismissed.indexOf(m.id)<0; }).sort(function(a,b){ return (b.t||0)-(a.t||0); }); }
+  var to=m.to||[]; if(typeof to==="string") to=[to]; if(state.user.scorer) return to.indexOf(state.user.first)>=0;
+  return to.indexOf("all")>=0 || to.indexOf(state.user.first)>=0; }
+function visibleMessages(){ return (state.messages||[]).filter(function(m){ return m&&m.text!=null&&addressedToMe(m)&&dismissed.indexOf(m.id)<0; }).sort(function(a,b){ return (b.t||0)-(a.t||0); }).slice(0,3); }
+var QUICK=["👍 Got it","✅ Done","🏃 On it","🔥 Let's go","📞 Call me"];
+function fmtTime(t){ if(!t) return ""; var d=new Date(t), n=new Date();
+  var hm=d.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}); return d.toDateString()===n.toDateString()? hm : d.toLocaleDateString([], {day:"2-digit",month:"2-digit"})+" "+hm; }
+function fullNameOf(tk,first){ if(first==="Ronit") return "Ronit Ben Simon"; var t=TEAMS[tk]; if(!t) return first;
+  for(var i=0;i<t.members.length;i++){ if(t.members[i].split(" ")[0]===first) return t.members[i]; } return first; }
+function msgById(id){ var a=state.messages||[]; for(var i=0;i<a.length;i++){ if(a[i].id===id) return a[i]; } return null; }
+function quoteHtml(m){ if(!m.replyTo) return ""; var o=msgById(m.replyTo); var q=o?o.text:(m.quote||""); if(!q) return "";
+  q=String(q); if(q.length>70) q=q.slice(0,70)+"…"; return '<div class="mquote">↪ '+esc(q)+'</div>'; }
+/* keep typed text when a live update re-draws a box */
+function keepInputs(box,fn){ var saved={}, foc=document.activeElement&&box.contains(document.activeElement)?document.activeElement.id:null, caret=null;
+  var els=box.querySelectorAll("textarea[id],input[id]"); for(var i=0;i<els.length;i++){ saved[els[i].id]=(els[i].type==="checkbox")?els[i].checked:els[i].value; }
+  if(foc){ try{ caret=document.activeElement.selectionStart; }catch(e){} }
+  var sc=box.querySelector(".chatscroll"), atBottom=sc?(sc.scrollHeight-sc.scrollTop-sc.clientHeight<40):true;
+  fn();
+  Object.keys(saved).forEach(function(id){ var el=document.getElementById(id); if(el&&box.contains(el)){ if(el.type==="checkbox") el.checked=saved[id]; else if(saved[id]) el.value=saved[id]; } });
+  var ns=box.querySelector(".chatscroll"); if(ns&&atBottom) ns.scrollTop=ns.scrollHeight;
+  if(foc){ var f=document.getElementById(foc); if(f){ f.focus(); try{ if(caret!=null) f.setSelectionRange(caret,caret); }catch(e){} } } }
 function renderPopups(){ var box=document.getElementById("popups"); if(!box) return;
-  if(!state.user){ box.innerHTML=""; return; }
-  box.innerHTML=visibleMessages().map(function(m){
-    return '<div class="popup"><div class="popuphd"><span class="popupfrom">📣 '+esc(m.fromName||m.from)+'</span>'
+  if(!state.user||state.chats||state.compose){ box.innerHTML=""; return; }
+  keepInputs(box,function(){ box.innerHTML=visibleMessages().map(function(m){
+    var isReact=m.kind==="react", isReply=!!m.replyTo;
+    var head=isReply?(isReact?'💬 '+esc(m.fromName||m.from)+' reacted':'💬 '+esc(m.fromName||m.from)+' replied'):'📣 '+esc(m.fromName||m.from);
+    var acts='';
+    if(!isReact){
+      if(state.replyOpen===m.id){
+        acts='<div class="replybox"><textarea id="rtxt_'+esc(m.id)+'" rows="2" placeholder="Write a reply..."></textarea>'
+          +'<div class="replyrow"><button class="qchip ghostq" data-action="reply-cancel">Cancel</button><button class="qchip sendq" data-action="reply-send" data-id="'+esc(m.id)+'">Send</button></div></div>';
+      } else {
+        acts='<div class="qrow">'+QUICK.map(function(q){ return '<button class="qchip" data-action="react" data-id="'+esc(m.id)+'" data-q="'+esc(q)+'">'+esc(q)+'</button>'; }).join("")
+          +'<button class="qchip writeq" data-action="reply-open" data-id="'+esc(m.id)+'">✍️ Reply</button></div>';
+      }
+    }
+    return '<div class="popup'+(isReply?' isreply':'')+'"><div class="popuphd"><span class="popupfrom">'+head+'</span>'
       +'<button class="popupx" data-action="dismiss" data-id="'+esc(m.id)+'">✕</button></div>'
+      +quoteHtml(m)
       +'<div class="popuptxt">'+esc(m.text)+'</div>'
-      +'<div class="popuptime">'+(m.t?new Date(m.t).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}):"")+'</div></div>'; }).join("");
+      +'<div class="popuptime">'+fmtTime(m.t)+'</div>'+acts+'</div>'; }).join(""); });
 }
+function sendReply(orig,text,kind){ if(!state.user) return;
+  var tk=orig._tk||state.user.team; if(!tk||!TEAMS[tk]){ toast("Can't reply to this one"); return; }
+  var m={ text:text, to:[orig.from], from:state.user.first, fromName:state.user.name, t:Date.now(), replyTo:orig.id, quote:String(orig.text||"").slice(0,120) };
+  if(kind) m.kind=kind;
+  addMessage(tk,m).then(function(){ toast(kind==="react"?"Reaction sent":"Reply sent"); }).catch(function(){ toast("Not sent - check connection"); });
+  if(dismissed.indexOf(orig.id)<0){ dismissed.push(orig.id); saveDismissed(); }
+  state.replyOpen=null; renderPopups(); }
+
+/* ===== Chats (history by person) — leaders and Ronit ===== */
+function loadSeen(){ try{ return JSON.parse(localStorage.getItem("fa26_seen"))||{}; }catch(e){ return {}; } }
+var seen=loadSeen(); function saveSeen(){ try{ localStorage.setItem("fa26_seen", JSON.stringify(seen)); }catch(e){} }
+function threadKeysOf(m){ var me=state.user.first, tk=m._tk, keys=[];
+  var to=m.to||[]; if(typeof to==="string") to=[to];
+  if(m.from===me){ to.forEach(function(r){ keys.push(r==="all"?("all|"+tk):(tk+"|"+r)); }); }
+  else if(addressedToMe(m)){ keys.push(tk+"|"+m.from); }
+  return keys; }
+function buildThreads(){ var th={}, me=state.user.first, byId={};
+  (state.messages||[]).forEach(function(m){ if(m&&m.id) byId[m.id]=m; });
+  (state.messages||[]).forEach(function(m){ if(!m||m.text==null||!m._tk) return;
+    var keys=threadKeysOf(m);
+    /* a reply to one of my broadcasts also shows inside that broadcast thread */
+    if(m.replyTo&&byId[m.replyTo]&&byId[m.replyTo].from===me){ var o=byId[m.replyTo], ot=o.to||[]; if(ot.indexOf&&ot.indexOf("all")>=0){ var k2="all|"+o._tk; if(keys.indexOf(k2)<0) keys.push(k2); } }
+    keys.forEach(function(k){ if(!th[k]){ var parts=k.split("|"); var isAll=parts[0]==="all"; var tk=isAll?parts[1]:parts[0]; var who=isAll?null:parts[1];
+        th[k]={ key:k, tk:tk, who:who, label: isAll?("Everyone · "+TEAMS[tk].name):fullNameOf(tk,who), sub: isAll?"Team broadcast":TEAMS[tk].name, msgs:[] }; }
+      th[k].msgs.push(m); }); });
+  var readAt={}; Object.keys(th).forEach(function(k){ th[k].msgs.forEach(function(m){ readAt[m.id]=Math.max(readAt[m.id]||0, seen[k]||0); }); });
+  var arr=Object.keys(th).map(function(k){ var t=th[k]; t.msgs.sort(function(a,b){ return (a.t||0)-(b.t||0); }); t.last=t.msgs[t.msgs.length-1];
+    t.unread=t.msgs.filter(function(m){ return m.from!==me && (m.t||0)>(readAt[m.id]||0); }).length; return t; });
+  arr.sort(function(a,b){ return (b.last.t||0)-(a.last.t||0); }); return arr; }
+function unreadTotal(){ if(!state.user||!canMessage()) return 0; var me=state.user.first, ths=buildThreads(), readAt={}, ts={};
+  ths.forEach(function(t){ t.msgs.forEach(function(m){ if(m.from===me) return; readAt[m.id]=Math.max(readAt[m.id]||0, seen[t.key]||0); ts[m.id]=m.t||0; }); });
+  return Object.keys(ts).filter(function(id){ return ts[id]>readAt[id]; }).length; }
+function markThreadRead(k){ markSeen(k); buildThreads().forEach(function(t){ if(t.key===k) t.msgs.forEach(function(m){ if(m.from!==state.user.first&&dismissed.indexOf(m.id)<0) dismissed.push(m.id); }); }); saveDismissed(); renderPopups(); }
+function chatsBtn(){ var n=unreadTotal(); return '<button class="msgbtn chatsbtn" data-action="chats">💬 Chats'+(n?'<span class="ubadge">'+n+'</span>':'')+'</button>'; }
+function chatsView(){ var ths=buildThreads();
+  if(state.chatOpen){ var t=null; ths.forEach(function(x){ if(x.key===state.chatOpen) t=x; });
+    var parts=state.chatOpen.split("|"), isAll=parts[0]==="all", tk=isAll?parts[1]:parts[0], who=isAll?null:parts[1];
+    var label=isAll?("Everyone · "+TEAMS[tk].name):fullNameOf(tk,who);
+    var me=state.user.first;
+    var bubbles=(t?t.msgs:[]).map(function(m){ var mine=m.from===me;
+      return '<div class="bub '+(mine?"mine":"theirs")+'">'+(isAll&&!mine?'<div class="bubwho">'+esc(m.fromName||m.from)+'</div>':'')+quoteHtml(m)
+        +'<div class="bubtxt">'+esc(m.text)+'</div><div class="bubtime">'+fmtTime(m.t)+(mine&&m.to&&m.to.length>1&&!isAll?' · group msg':'')+'</div></div>'; }).join("")
+      || '<div class="muted center pad">No messages yet. Say hi 👋</div>';
+    return '<div class="ovl" data-action="chats-close"><div class="sheet chatsheet" data-stop="1"><div class="grab"></div>'
+      +'<div class="sheethd"><div><button class="linklike" data-action="chat-back">‹ All chats</button><h2>'+esc(label)+'</h2><div class="muted small">'+(isAll?"Messages to the whole team, and replies to them":esc(TEAMS[tk].name))+'</div></div>'
+        +'<button class="xbtn" data-action="chats-close">✕</button></div>'
+      +'<div class="chatscroll">'+bubbles+'</div>'
+      +'<div class="chatin"><textarea id="chattxt" rows="2" placeholder="'+(isAll?"Message the whole team...":"Message "+esc(label.split(" ")[0])+"...")+'"></textarea>'
+      +'<button class="btn primary" data-action="chat-send">Send</button></div>'
+      +'</div></div>'; }
+  var list=ths.length? ths.map(function(t){ var l=t.last; var pre=l.from===state.user.first?"You: ":(t.who?"":(l.from+": "));
+      return '<button class="thread" data-action="chat-open" data-k="'+esc(t.key)+'"><div class="thav" style="background:'+(TEAMS[t.tk]?TEAMS[t.tk].color:"#1E4D2B")+'">'+esc(t.who?t.who.charAt(0):"👥")+'</div>'
+        +'<div class="thmid"><div class="thname">'+esc(t.label)+'</div><div class="thlast">'+esc(pre+String(l.text).slice(0,60))+'</div></div>'
+        +'<div class="thright"><div class="thtime">'+fmtTime(l.t)+'</div>'+(t.unread?'<span class="ubadge">'+t.unread+'</span>':'')+'</div></button>'; }).join("")
+    : '<div class="muted center pad">No conversations yet. Send a message with 📣 Message and the history will appear here, one chat per person.</div>';
+  return '<div class="ovl" data-action="chats-close"><div class="sheet" data-stop="1"><div class="grab"></div>'
+    +'<div class="sheethd"><div><h2>Chats</h2><div class="muted small">Your conversations, one per person.</div></div><button class="xbtn" data-action="chats-close">✕</button></div>'
+    +'<div class="threadlist">'+list+'</div></div></div>'; }
+function markSeen(k){ seen[k]=Date.now(); saveSeen(); }
+function onMessages(){ renderPopups(); if(state.chats&&state.chatOpen) markSeen(state.chatOpen); renderCompose(); refreshChatsBadge(); }
+function refreshChatsBadge(){ var b=document.querySelector(".chatsbtn"); if(!b) return; var n=unreadTotal(); b.innerHTML='💬 Chats'+(n?'<span class="ubadge">'+n+'</span>':''); }
 function canMessage(){ return state.user && (state.user.leader || state.user.scorer); }
 function composeScorer(){
   var blocks=RANK_ORDER.map(function(tk){
@@ -499,10 +637,12 @@ function recipientChecks(tk){ return TEAMS[tk].members.map(function(full){ var f
   if(state.user&&first===state.user.first) return "";
   return '<label class="rcpt"><input type="checkbox" class="rcptchk" value="'+first+'"> '+esc(full)+'</label>'; }).join(""); }
 function renderCompose(){ var box=document.getElementById("compose"); if(!box) return;
-  if(state.compose&&canMessage()){ box.innerHTML=composeView(); box.style.display="block";
+  if(state.chats&&canMessage()){ box.setAttribute("data-open","chats"); keepInputs(box,function(){ box.innerHTML=chatsView(); }); box.style.display="block"; return; }
+  if(state.compose&&canMessage()){ if(box.getAttribute("data-open")==="compose"&&box.innerHTML){ box.style.display="block"; return; }
+    box.setAttribute("data-open","compose"); box.innerHTML=composeView(); box.style.display="block";
     var all=document.getElementById("rcptall"), list=document.getElementById("rcptlist");
     if(all&&list){ all.addEventListener("change", function(){ if(all.checked){list.style.opacity=".45";list.style.pointerEvents="none";} else {list.style.opacity="1";list.style.pointerEvents="auto";} }); }
-  } else { box.style.display="none"; box.innerHTML=""; }
+  } else { box.style.display="none"; box.innerHTML=""; box.removeAttribute("data-open"); }
 }
 
 /* ===== SVG mini-charts ===== */
@@ -521,12 +661,12 @@ function donut(data){ var total=data.reduce(function(a,d){return a+d.v;},0); if(
 
 /* ===== Render ===== */
 window.goTab=function(e,t){ if(e){e.stopPropagation();e.preventDefault();} state.tab=t; render(); window.scrollTo(0,0); };
-var APP_VERSION="v5 · 04/10";
+var APP_VERSION="v6 · 04/10";
 var app;
 function render(){
   app=app||document.getElementById("app");
   if(!state.user){ app.innerHTML=loginView(); wireLogin(); renderPopups(); renderCompose(); return; }
-  if(state.user.scorer){ app.innerHTML=scorerLayout(); renderPopups(); return; }
+  if(state.user.scorer){ app.innerHTML=scorerLayout(); renderPopups(); renderCompose(); return; }
   if(!state.team) state.team=state.user.team;
   var html="";
   try {
@@ -567,7 +707,7 @@ function wireLogin(){
   var hn=function(e){ if(e.key==="Enter") go(); }; ln.addEventListener("keydown",hn);
   if(REQUIRE_PASSWORD) document.getElementById("lpwd").addEventListener("keydown",hn);
 }
-function logout(){ state.user=null; state.team=null; state.tab="dashboard"; saveUser(); if(unsubRec){try{unsubRec();}catch(e){}} render(); }
+function logout(){ scMsgUnsub.forEach(function(u){try{u();}catch(e){}}); scMsgUnsub=[]; scMsgs={}; state.messages=[]; state.chats=false; state.chatOpen=null; state.replyOpen=null; state.user=null; state.team=null; state.tab="dashboard"; saveUser(); if(unsubRec){try{unsubRec();}catch(e){}} render(); }
 
 function header(t){
   var u=state.user; var tm=curTeam();
@@ -580,7 +720,7 @@ function header(t){
       +'<div class="teampts"><div class="big">'+t.pts+'</div><div class="cap">team pts</div></div></div>'
     +'<div class="hdrow2"><button class="userchip" data-action="logout">'+esc(u.name)+(u.leader?" · leader":"")+' ⎋</button>'
       +'<span class="livepill '+(liveMode?"on":"")+'">'+(liveMode?"● Live":"○ Offline")+'</span>'
-      +(canMessage()?'<button class="msgbtn" data-action="compose">📣 Message</button>':'')+'</div>'
+      +(canMessage()?'<button class="msgbtn" data-action="compose">📣 Message</button>'+chatsBtn():'')+'</div>'
     +'<div class="tabs">'+tabhtml+'</div><div style="font-size:10px;opacity:.5;text-align:right;padding:2px 8px">'+APP_VERSION+'</div></header>';
 }
 
@@ -716,7 +856,7 @@ function scorerLayout(){
       +'<div class="teampts"><div class="big">🎖️</div></div></div>'
       +'<div class="hdrow2"><button class="userchip" data-action="logout">'+esc(u.name)+' · referee ⎋</button>'
       +'<span class="livepill '+(liveMode?"on":"")+'">'+(liveMode?"● Live":"○ Offline")+'</span>'
-      +'<button class="msgbtn" data-action="compose">📣 Message</button></div></header>'
+      +'<button class="msgbtn" data-action="compose">📣 Message</button>'+chatsBtn()+'</div></header>'
     +'<main>'
     +'<section class="card"><div class="ctitle">Assign points</div>'
       +'<div class="lbl">Team</div><select class="sel" data-action="scteam">'+teamOpts+'</select>'
@@ -782,20 +922,34 @@ document.body.addEventListener("click", function(e){ var el=findAction(e.target)
   else if(a==="unassign"){ removeExtra(state.scTeam, el.getAttribute("data-id")); }
   else if(a==="rmphoto"){ removePhoto(+el.getAttribute("data-id")); }
   else if(a==="dismiss"){ var mid=el.getAttribute("data-id"); if(dismissed.indexOf(mid)<0){ dismissed.push(mid); saveDismissed(); } renderPopups(); }
-  else if(a==="compose"){ state.compose=true; renderCompose(); }
-  else if(a==="compose-cancel"){ if(el.className==="ovl"&&e.target!==el) return; state.compose=false; renderCompose(); }
+  else if(a==="compose"){ state.chats=false; state.compose=true; renderCompose(); renderPopups(); }
+  else if(a==="react"){ var om=msgById(el.getAttribute("data-id")); if(om) sendReply(om, el.getAttribute("data-q"), "react"); }
+  else if(a==="reply-open"){ state.replyOpen=el.getAttribute("data-id"); renderPopups(); var rt=document.getElementById("rtxt_"+state.replyOpen); if(rt) rt.focus(); }
+  else if(a==="reply-cancel"){ state.replyOpen=null; renderPopups(); }
+  else if(a==="reply-send"){ var rid=el.getAttribute("data-id"), rta=document.getElementById("rtxt_"+rid), rv=((rta&&rta.value)||"").trim();
+      if(!rv){ toast("Write a reply first"); return; } var om2=msgById(rid); if(om2) sendReply(om2, rv, null); }
+  else if(a==="chats"){ state.compose=false; state.chats=true; state.chatOpen=null; renderCompose(); renderPopups(); }
+  else if(a==="chats-close"){ if(el.className==="ovl"&&e.target!==el) return; state.chats=false; state.chatOpen=null; renderCompose(); refreshChatsBadge(); renderPopups(); }
+  else if(a==="chat-open"){ state.chatOpen=el.getAttribute("data-k"); markThreadRead(state.chatOpen); renderCompose(); refreshChatsBadge(); var sc=document.querySelector(".chatscroll"); if(sc) sc.scrollTop=sc.scrollHeight; }
+  else if(a==="chat-back"){ state.chatOpen=null; renderCompose(); }
+  else if(a==="chat-send"){ var ct=document.getElementById("chattxt"), cv=((ct&&ct.value)||"").trim(); if(!cv){ toast("Write a message first"); return; }
+      var cp=state.chatOpen.split("|"), cAll=cp[0]==="all", ctk=cAll?cp[1]:cp[0], cwho=cAll?null:cp[1];
+      if(!state.user.scorer&&ctk!==state.user.team){ toast("You can only message your team"); return; }
+      addMessage(ctk,{text:cv,to:cAll?["all"]:[cwho],from:state.user.first,fromName:state.user.name,t:Date.now()}).then(function(){ toast("Sent"); }).catch(function(){ toast("Not sent - check connection"); });
+      ct.value=""; }
+  else if(a==="compose-cancel"){ if(el.className==="ovl"&&e.target!==el) return; state.compose=false; renderCompose(); renderPopups(); }
   else if(a==="compose-send"){ var txt=(document.getElementById("msgtext").value||"").trim(); if(!txt){ toast("Write a message first"); return; }
       if(state.user.scorer){ var everyone=document.getElementById("sceveryone").checked; var per={}; RANK_ORDER.forEach(function(tk){ per[tk]={whole:false,persons:[]}; });
         if(everyone){ RANK_ORDER.forEach(function(tk){ per[tk].whole=true; }); }
         else { var ws=document.querySelectorAll(".scwhole"); for(var wi=0;wi<ws.length;wi++){ if(ws[wi].checked) per[ws[wi].getAttribute("data-team")].whole=true; }
           var cs=document.querySelectorAll(".scchk"); for(var ci=0;ci<cs.length;ci++){ if(cs[ci].checked) per[cs[ci].getAttribute("data-team")].persons.push(cs[ci].value); } }
         var sent=0; RANK_ORDER.forEach(function(tk){ var pt=per[tk]; if(pt.whole){ addMessage(tk,{text:txt,to:["all"],from:"Ronit",fromName:"Ronit Ben Simon",t:Date.now()}).catch(function(){}); sent++; } else if(pt.persons.length){ addMessage(tk,{text:txt,to:pt.persons,from:"Ronit",fromName:"Ronit Ben Simon",t:Date.now()}).catch(function(){}); sent++; } });
-        if(!sent){ toast("Pick recipients"); return; } toast("Message sent"); state.compose=false; renderCompose(); return; }
+        if(!sent){ toast("Pick recipients"); return; } toast("Message sent"); state.compose=false; renderCompose(); renderPopups(); return; }
       var teamKey=state.user.team;
       var to; if(document.getElementById("rcptall").checked){ to=["all"]; }
       else { to=[]; var chks=document.querySelectorAll(".rcptchk"); for(var i=0;i<chks.length;i++){ if(chks[i].checked) to.push(chks[i].value); } if(!to.length){ toast("Pick at least one person"); return; } }
       addMessage(teamKey, {text:txt, to:to, from:state.user.first, fromName:state.user.name, t:Date.now()}).then(function(){ toast("Message sent"); }).catch(function(){ toast("Message not sent"); });
-      state.compose=false; renderCompose(); }
+      state.compose=false; renderCompose(); renderPopups(); }
 });
 document.body.addEventListener("change", function(e){ var el=e.target; if(!el) return;
   if(el.getAttribute&&el.getAttribute("data-action")==="scteam"){ state.scTeam=el.value; state.scPerson=""; if(FB) scorerSubscribe(); render(); return; }
