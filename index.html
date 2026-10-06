@@ -357,55 +357,78 @@ function initFirebase(){
     liveMode=true; render();
   }).catch(function(e){ liveMode=false; fbErr="load: "+((e&&(e.code||e.message))||"blocked"); render(); });
 }
+/* every team's score is computed the same way for everybody:
+   only records of companies in that team's list, only valid stages */
+var TEAM_IDS={}; TEAM_ORDER.forEach(function(tk){ var m={}; (TEAMS[tk].companies||[]).forEach(function(c){ m[String(c.id)]=1; }); TEAM_IDS[tk]=m; });
+function ptsOf(v){ var n=Number(v); return isFinite(n)?n:0; }
 function subscribeRanking(){
   rankUnsub.forEach(function(u){ try{u();}catch(e){} }); rankUnsub=[];
   RANK_ORDER.forEach(function(tk){ var tok=TEAMS[tk].token;
     if(!state.teamTotals[tk]) state.teamTotals[tk]={sales:0,act:0,done:0};
     var u1=FB.onSnapshot(FB.collection(DB,"teams",tok,"records"), function(snap){
-      var sp=0, done=0, bp={}; snap.forEach(function(d){ var r=d.data()||{}; var s=(r.s&&STATUS[r.s])?r.s:"not_started"; var pt=STATUS[s].points;
+      var sp=0, done=0, bp={}; snap.forEach(function(d){ if(!TEAM_IDS[tk][String(d.id)]) return; var r=d.data()||{}; var s=(r.s&&STATUS[r.s])?r.s:"not_started"; var pt=STATUS[s].points;
         sp+=pt; if(s!=="not_started"){ done++; var who=r.u||"?"; bp[who]=(bp[who]||0)+pt; } });
-      var tt=state.teamTotals[tk]||{}; tt.sales=sp; tt.done=done; tt.salesByPerson=bp; state.teamTotals[tk]=tt; lastSync=new Date();
+      delete rankErr[tk]; var tt=state.teamTotals[tk]||{}; tt.sales=sp; tt.done=done; tt.salesByPerson=bp; state.teamTotals[tk]=tt; lastSync=new Date();
       if(state.tab==="ranking"||state.tab==="dashboard"||(state.user&&state.user.scorer)) render();
-    }, function(e){ fbErr="Team "+tk+": "+((e&&e.code)||"error"); render(); });
+    }, function(e){ rankErr[tk]=(e&&e.code)||"error"; render(); scheduleReconnect(); });
     var u2=FB.onSnapshot(FB.collection(DB,"teams",tok,"extra"), function(snap){
-      var ap=0, bp={}; snap.forEach(function(d){ var o=d.data()||{}; ap+=(o.points||0); var who=o.person||"?"; bp[who]=(bp[who]||0)+(o.points||0); });
+      var ap=0, bp={}; snap.forEach(function(d){ var o=d.data()||{}; var pv=ptsOf(o.points); ap+=pv; var who=o.person||"?"; bp[who]=(bp[who]||0)+pv; });
       var tt=state.teamTotals[tk]||{}; tt.act=ap; tt.extraByPerson=bp; state.teamTotals[tk]=tt;
       if(state.tab==="ranking"||state.tab==="dashboard"||(state.user&&state.user.scorer)) render();
-    }, function(){});
+    }, function(e){ rankErr[tk]=(e&&e.code)||"error"; render(); scheduleReconnect(); });
     rankUnsub.push(u1); rankUnsub.push(u2);
   });
 }
-function subscribeTeam(){
-  if(unsubRec){try{unsubRec();}catch(e){}} if(unsubMsg){try{unsubMsg();}catch(e){}} if(unsubAct){try{unsubAct();}catch(e){}}
-  state.records={}; state.extra=[]; state.messages=[];
-  var tok=curTeam().token;
-  unsubRec=FB.onSnapshot(FB.collection(DB,"teams",tok,"records"), function(snap){
-    var recs={}; snap.forEach(function(d){ recs[d.id]=d.data(); }); state.records=recs; liveMode=true; lastSync=new Date(); render();
-  }, function(e){ liveMode=false; fbErr=(e&&(e.code||e.message))||"error"; render(); });
-  unsubAct=FB.onSnapshot(FB.collection(DB,"teams",tok,"extra"), function(snap){
+/* ---- self-healing: a listener that fails is re-opened automatically ---- */
+var rankErr={}, userErr=false, reconnectTimer=null;
+function scheduleReconnect(){ if(reconnectTimer) return; reconnectTimer=setTimeout(function(){ reconnectTimer=null; reconnect(); }, 8000); }
+function reconnect(){ if(!FB) return; rankErr={}; userErr=false; fbErr="";
+  subscribeRanking();
+  if(state.user){ if(state.user.scorer){ scMsgUnsub.forEach(function(u){try{u();}catch(e){}}); scMsgUnsub=[]; scorerSubscribe(); } else subscribeTeam(true); }
+  render(); }
+function needsReconnect(){ return userErr || Object.keys(rankErr).length>0 || !liveMode; }
+document.addEventListener("visibilitychange", function(){ if(document.visibilityState==="visible" && FB && needsReconnect()) reconnect(); });
+window.addEventListener("online", function(){ if(FB) reconnect(); });
+/* close every per-user live listener (used on logout and before any new subscription) */
+function stopUserListeners(keep){
+  [unsubRec,unsubMsg,unsubAct,unsubScorer].forEach(function(u){ if(u){ try{u();}catch(e){} } });
+  unsubRec=unsubMsg=unsubAct=unsubScorer=null;
+  scMsgUnsub.forEach(function(u){ try{u();}catch(e){} }); scMsgUnsub=[]; scMsgs={};
+  if(!keep){ state.records={}; state.extra=[]; state.messages=[]; }
+}
+function subscribeTeam(keep){
+  stopUserListeners(keep);
+  var tok=curTeam().token, myTk=state.team;
+  function mine(){ return state.user && !state.user.scorer && state.team===myTk; }
+  unsubRec=FB.onSnapshot(FB.collection(DB,"teams",tok,"records"), function(snap){ if(!mine()) return;
+    var recs={}; snap.forEach(function(d){ recs[d.id]=d.data(); }); state.records=recs; liveMode=true; userErr=false; fbErr=""; lastSync=new Date(); render();
+  }, function(e){ liveMode=false; fbErr=(e&&(e.code||e.message))||"error"; userErr=true; render(); scheduleReconnect(); });
+  unsubAct=FB.onSnapshot(FB.collection(DB,"teams",tok,"extra"), function(snap){ if(!mine()) return;
     var arr=[]; snap.forEach(function(d){ var o=d.data()||{}; o.id=d.id; arr.push(o); }); state.extra=arr; render();
   }, function(){});
-  unsubMsg=FB.onSnapshot(FB.collection(DB,"teams",tok,"messages"), function(snap){
-    var arr=[]; var tk0=state.user&&state.user.team; snap.forEach(function(d){ var o=d.data()||{}; o.id=d.id; o._tk=tk0; arr.push(o); }); state.messages=arr; onMessages();
+  unsubMsg=FB.onSnapshot(FB.collection(DB,"teams",tok,"messages"), function(snap){ if(!mine()) return;
+    var arr=[]; var tk0=myTk; snap.forEach(function(d){ var o=d.data()||{}; o.id=d.id; o._tk=tk0; arr.push(o); }); state.messages=arr; onMessages();
   }, function(){});
 }
 var scMsgUnsub=[], scMsgs={};
 function scorerMsgSubscribe(){
   if(!FB||scMsgUnsub.length) return;
   RANK_ORDER.forEach(function(tk){
-    scMsgUnsub.push(FB.onSnapshot(FB.collection(DB,"teams",TEAMS[tk].token,"messages"), function(snap){
+    scMsgUnsub.push(FB.onSnapshot(FB.collection(DB,"teams",TEAMS[tk].token,"messages"), function(snap){ if(!(state.user&&state.user.scorer)) return;
       var arr=[]; snap.forEach(function(d){ var o=d.data()||{}; o.id=d.id; o._tk=tk; arr.push(o); }); scMsgs[tk]=arr;
       var all=[]; RANK_ORDER.forEach(function(k){ all=all.concat(scMsgs[k]||[]); }); state.messages=all; onMessages();
     }, function(){}));
   });
 }
 function scorerSubscribe(){
-  if(!FB) return; scorerMsgSubscribe(); if(unsubScorer){try{unsubScorer();}catch(e){}} state.extra=[];
-  var tok=TEAMS[state.scTeam].token;
-  unsubScorer=FB.onSnapshot(FB.collection(DB,"teams",tok,"extra"), function(snap){
+  if(!FB) return;
+  [unsubRec,unsubMsg,unsubAct].forEach(function(u){ if(u){ try{u();}catch(e){} } }); unsubRec=unsubMsg=unsubAct=null; state.records={};
+  scorerMsgSubscribe(); if(unsubScorer){try{unsubScorer();}catch(e){}} state.extra=[];
+  var scTk=state.scTeam, tok=TEAMS[scTk].token;
+  unsubScorer=FB.onSnapshot(FB.collection(DB,"teams",tok,"extra"), function(snap){ if(!(state.user&&state.user.scorer&&state.scTeam===scTk)) return;
     var arr=[]; snap.forEach(function(d){ var o=d.data()||{}; o.id=d.id; arr.push(o); }); state.extra=arr;
     if(state.user&&state.user.scorer) render();
-  }, function(){});
+  }, function(){ userErr=true; scheduleReconnect(); });
 }
 function assignExtra(teamKey,o){ if(!DB){ toast("Offline - try again when live"); return; }
   o.by="Ronit"; o.t=Date.now();
@@ -427,7 +450,7 @@ function rec(id){ return state.records[id]||{}; }
 function statusOf(id){ var v=state.records[id]&&state.records[id].s; return (v&&STATUS[v])?v:"not_started"; }
 function esc(s){ return (s==null?"":String(s)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 
-function activityPoints(){ var p=0; (state.extra||[]).forEach(function(e){ p+=(e.points||0); }); return p; }
+function activityPoints(){ var p=0; (state.extra||[]).forEach(function(e){ p+=ptsOf(e.points); }); return p; }
 function totals(){
   var salesPts=0, byHall={}, counts={}, done=0; var list=companies();
   curTeam().halls.forEach(function(h){ byHall[h]=0; });
@@ -686,7 +709,7 @@ function donut(data){ var total=data.reduce(function(a,d){return a+d.v;},0); if(
 
 /* ===== Render ===== */
 window.goTab=function(e,t){ if(e){e.stopPropagation();e.preventDefault();} state.tab=t; render(); window.scrollTo(0,0); };
-var APP_VERSION="v11 · 06/10";
+var APP_VERSION="v13 · 06/10";
 var app;
 function render(){
   app=app||document.getElementById("app");
@@ -732,8 +755,10 @@ function wireLogin(){
   var hn=function(e){ if(e.key==="Enter") go(); }; ln.addEventListener("keydown",hn);
   if(REQUIRE_PASSWORD) document.getElementById("lpwd").addEventListener("keydown",hn);
 }
-function logout(){ scMsgUnsub.forEach(function(u){try{u();}catch(e){}}); scMsgUnsub=[]; scMsgs={}; state.messages=[]; state.chats=false; state.chatOpen=null; state.replyOpen=null; state.user=null; state.team=null; state.tab="dashboard"; saveUser(); if(unsubRec){try{unsubRec();}catch(e){}} render(); }
+function logout(){ stopUserListeners(); state.chats=false; state.chatOpen=null; state.replyOpen=null; state.compose=false; state.user=null; state.team=null; state.tab="dashboard"; saveUser(); render(); }
 
+function livePill(){ var rk=Object.keys(rankErr); var warn=rk.length?' <b>⚠ ranking '+esc(rk.join("/"))+': '+esc(rankErr[rk[0]])+'</b>':"";
+  return '<span class="livepill '+(liveMode&&!rk.length?"on":"")+'">'+(liveMode?"● Live":"○ Offline"+(fbErr?" · "+esc(fbErr):""))+warn+'</span>'; }
 function header(t){
   var u=state.user; var tm=curTeam();
   var tabs=[["dashboard","Dashboard"]]; if(teamCompetes()) tabs.push(["ranking","Ranking"]); tabs.push(["map","Map"],["companies","Companies"],["extra","Extra"]);
@@ -744,7 +769,7 @@ function header(t){
       +'<div><div class="htitle">Fruit Attraction 2026</div><div class="hsub">'+teamSel+'</div></div></div>'
       +'<div class="teampts"><div class="big">'+t.pts+'</div><div class="cap">team pts</div></div></div>'
     +'<div class="hdrow2"><button class="userchip" data-action="logout">'+esc(u.name)+(u.leader?" 👑":"")+' ⎋</button>'
-      +'<span class="livepill '+(liveMode?"on":"")+'">'+(liveMode?"● Live":"○ Offline"+(fbErr?" · "+esc(fbErr):""))+'</span>'
+      +livePill()
       +(canMessage()?'<button class="msgbtn" data-action="compose">📣 Message</button>'+chatsBtn():'')+'</div>'
     +'<div class="tabs">'+tabhtml+'</div><div style="font-size:10px;opacity:.5;text-align:right;padding:2px 8px">'+APP_VERSION+'</div></header>';
 }
@@ -879,7 +904,7 @@ function scorerLayout(){
       +'<div><div class="htitle">Extra points · Referee</div><div class="hsub"><span class="teamtag" style="background:#8E44AD">'+esc(u.name)+'</span></div></div></div>'
       +'<div class="teampts"><div class="big">🎖️</div></div></div>'
       +'<div class="hdrow2"><button class="userchip" data-action="logout">'+esc(u.name)+' ⎋</button>'
-      +'<span class="livepill '+(liveMode?"on":"")+'">'+(liveMode?"● Live":"○ Offline"+(fbErr?" · "+esc(fbErr):""))+'</span>'
+      +livePill()
       +'<button class="msgbtn" data-action="compose">📣 Message</button>'+chatsBtn()+'</div></header>'
     +'<main>'
     +'<section class="card"><div class="ctitle">Assign points</div>'
