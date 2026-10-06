@@ -344,7 +344,7 @@ function saveUser(){ try{ state.user? localStorage.setItem("fa26_user", JSON.str
 
 /* ===== Firebase ===== */
 var FB=null, DB=null, unsubRec=null, unsubMsg=null, unsubAct=null, unsubScorer=null, rankUnsub=[];
-var liveMode=false, lastSync=null;
+var liveMode=false, lastSync=null, fbErr="";
 
 function initFirebase(){
   Promise.all([
@@ -355,7 +355,7 @@ function initFirebase(){
     subscribeRanking();
     if(state.user){ if(state.user.scorer) scorerSubscribe(); else subscribeTeam(); }
     liveMode=true; render();
-  }).catch(function(){ liveMode=false; render(); });
+  }).catch(function(e){ liveMode=false; fbErr="load: "+((e&&(e.code||e.message))||"blocked"); render(); });
 }
 function subscribeRanking(){
   rankUnsub.forEach(function(u){ try{u();}catch(e){} }); rankUnsub=[];
@@ -366,7 +366,7 @@ function subscribeRanking(){
         sp+=pt; if(s!=="not_started"){ done++; var who=r.u||"?"; bp[who]=(bp[who]||0)+pt; } });
       var tt=state.teamTotals[tk]||{}; tt.sales=sp; tt.done=done; tt.salesByPerson=bp; state.teamTotals[tk]=tt; lastSync=new Date();
       if(state.tab==="ranking"||state.tab==="dashboard"||(state.user&&state.user.scorer)) render();
-    }, function(){});
+    }, function(e){ fbErr="Team "+tk+": "+((e&&e.code)||"error"); render(); });
     var u2=FB.onSnapshot(FB.collection(DB,"teams",tok,"extra"), function(snap){
       var ap=0, bp={}; snap.forEach(function(d){ var o=d.data()||{}; ap+=(o.points||0); var who=o.person||"?"; bp[who]=(bp[who]||0)+(o.points||0); });
       var tt=state.teamTotals[tk]||{}; tt.act=ap; tt.extraByPerson=bp; state.teamTotals[tk]=tt;
@@ -381,7 +381,7 @@ function subscribeTeam(){
   var tok=curTeam().token;
   unsubRec=FB.onSnapshot(FB.collection(DB,"teams",tok,"records"), function(snap){
     var recs={}; snap.forEach(function(d){ recs[d.id]=d.data(); }); state.records=recs; liveMode=true; lastSync=new Date(); render();
-  }, function(){ liveMode=false; render(); });
+  }, function(e){ liveMode=false; fbErr=(e&&(e.code||e.message))||"error"; render(); });
   unsubAct=FB.onSnapshot(FB.collection(DB,"teams",tok,"extra"), function(snap){
     var arr=[]; snap.forEach(function(d){ var o=d.data()||{}; o.id=d.id; arr.push(o); }); state.extra=arr; render();
   }, function(){});
@@ -409,7 +409,7 @@ function scorerSubscribe(){
 }
 function assignExtra(teamKey,o){ if(!DB){ toast("Offline - try again when live"); return; }
   o.by="Ronit"; o.t=Date.now();
-  FB.addDoc(FB.collection(DB,"teams",TEAMS[teamKey].token,"extra"), o).then(function(){ toast("Assigned +"+o.points+" to "+o.person); }).catch(function(){ toast("Not assigned"); }); }
+  FB.addDoc(FB.collection(DB,"teams",TEAMS[teamKey].token,"extra"), o).then(function(){ toast("Assigned +"+o.points+" to "+o.person); }).catch(function(e){ toast("Not assigned: "+((e&&(e.code||e.message))||"error")); }); }
 function removeExtra(teamKey,id){ if(!DB) return; FB.deleteDoc(FB.doc(DB,"teams",TEAMS[teamKey].token,"extra",id)).then(function(){ toast("Removed"); }).catch(function(){}); }
 function saveRemote(id){ if(!DB) return; var tok=curTeam().token;
   FB.setDoc(FB.doc(DB,"teams",tok,"records",String(id)), state.records[id]||{}, {merge:true}).catch(function(){}); }
@@ -686,7 +686,7 @@ function donut(data){ var total=data.reduce(function(a,d){return a+d.v;},0); if(
 
 /* ===== Render ===== */
 window.goTab=function(e,t){ if(e){e.stopPropagation();e.preventDefault();} state.tab=t; render(); window.scrollTo(0,0); };
-var APP_VERSION="v10 · 05/10";
+var APP_VERSION="v11 · 06/10";
 var app;
 function render(){
   app=app||document.getElementById("app");
@@ -744,7 +744,7 @@ function header(t){
       +'<div><div class="htitle">Fruit Attraction 2026</div><div class="hsub">'+teamSel+'</div></div></div>'
       +'<div class="teampts"><div class="big">'+t.pts+'</div><div class="cap">team pts</div></div></div>'
     +'<div class="hdrow2"><button class="userchip" data-action="logout">'+esc(u.name)+(u.leader?" 👑":"")+' ⎋</button>'
-      +'<span class="livepill '+(liveMode?"on":"")+'">'+(liveMode?"● Live":"○ Offline")+'</span>'
+      +'<span class="livepill '+(liveMode?"on":"")+'">'+(liveMode?"● Live":"○ Offline"+(fbErr?" · "+esc(fbErr):""))+'</span>'
       +(canMessage()?'<button class="msgbtn" data-action="compose">📣 Message</button>'+chatsBtn():'')+'</div>'
     +'<div class="tabs">'+tabhtml+'</div><div style="font-size:10px;opacity:.5;text-align:right;padding:2px 8px">'+APP_VERSION+'</div></header>';
 }
@@ -879,7 +879,7 @@ function scorerLayout(){
       +'<div><div class="htitle">Extra points · Referee</div><div class="hsub"><span class="teamtag" style="background:#8E44AD">'+esc(u.name)+'</span></div></div></div>'
       +'<div class="teampts"><div class="big">🎖️</div></div></div>'
       +'<div class="hdrow2"><button class="userchip" data-action="logout">'+esc(u.name)+' ⎋</button>'
-      +'<span class="livepill '+(liveMode?"on":"")+'">'+(liveMode?"● Live":"○ Offline")+'</span>'
+      +'<span class="livepill '+(liveMode?"on":"")+'">'+(liveMode?"● Live":"○ Offline"+(fbErr?" · "+esc(fbErr):""))+'</span>'
       +'<button class="msgbtn" data-action="compose">📣 Message</button>'+chatsBtn()+'</div></header>'
     +'<main>'
     +'<section class="card"><div class="ctitle">Assign points</div>'
