@@ -496,26 +496,35 @@ function toast(mm){ var t=document.getElementById("toast"); t.textContent=mm; t.
 function download(name,blob){ var url=URL.createObjectURL(blob); var a=document.createElement("a"); a.href=url; a.download=name; a.click(); URL.revokeObjectURL(url); }
 function buildRows(){ return companies().map(function(c){ var r=rec(c.id); var st=STATUS[statusOf(c.id)];
   return { Company:c.name, Hall:c.hall, Stand:c.stand, Country:c.country, Products:c.products,
-    Status:st.label, Points:st.points, Contact:c.email, Website:c.website, Photo:r.p?"Yes":"",
+    "Customer type":(trackOf(c.id)==="new"?"New":trackOf(c.id)==="existing"?"Existing":""), Status:st.label, Points:st.points, Contact:c.email, Website:c.website, Photo:r.p?"Yes":"",
     "Updated by":r.u||"", "Updated at":r.t?new Date(r.t).toLocaleString():"", Notes:r.n||"" }; }); }
 function exportXLSX(){ if(!companies().length){ toast("No companies yet in this team"); return; }
   toast("Building Excel...");
   import("https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs").then(function(XLSX){
     var t=totals(); var ws=XLSX.utils.json_to_sheet(buildRows());
-    ws["!cols"]=[{wch:32},{wch:6},{wch:9},{wch:14},{wch:30},{wch:22},{wch:7},{wch:28},{wch:22},{wch:7},{wch:14},{wch:20},{wch:30}];
+    ws["!cols"]=[{wch:32},{wch:6},{wch:9},{wch:14},{wch:30},{wch:13},{wch:22},{wch:7},{wch:28},{wch:22},{wch:7},{wch:14},{wch:20},{wch:30}];
     var summary=[{Metric:"Team",Value:curTeam().name},{Metric:"Team total points",Value:t.pts},
       {Metric:"Sales points",Value:t.salesPts},{Metric:"Extra (LinkedIn+Marketing) points",Value:t.actPts},
       {Metric:"Companies worked",Value:t.done+" / "+t.n},{}];
     SCORING.forEach(function(k){ summary.push({Metric:STATUS[k].label,Value:t.counts[k]}); });
     summary.push({});
-    ACTIVITY_ORDER.forEach(function(k){ var q=state.activities[k]||0; summary.push({Metric:ACTIVITIES[k].label+" (x"+q+")",Value:q*ACTIVITIES[k].points}); });
+    var ex=state.extra||[];
+    ACTIVITY_ORDER.forEach(function(k){ var q=ex.filter(function(e){return e.act===k;}); var pv=0; q.forEach(function(e){pv+=ptsOf(e.points);}); summary.push({Metric:ACTIVITIES[k].label+" (x"+q.length+")",Value:pv}); });
+    var cu=ex.filter(function(e){return !ACTIVITIES[e.act];}); if(cu.length){ var cv=0; cu.forEach(function(e){cv+=ptsOf(e.points);}); summary.push({Metric:"Custom extra points (x"+cu.length+")",Value:cv}); }
+    summary.push({},{Metric:"Points by person",Value:""});
+    curTeam().members.forEach(function(m){ var sp=0, xp=0;
+      companies().forEach(function(c){ var r=rec(c.id); if(r.u===m) sp+=STATUS[statusOf(c.id)].points; });
+      ex.forEach(function(e){ if(e.person===m) xp+=ptsOf(e.points); });
+      summary.push({Metric:m, Value:(sp+xp)+" (sales "+sp+" + extra "+xp+")"}); });
     summary.push({},{Metric:"Exported by",Value:state.user?state.user.name:""},{Metric:"Exported",Value:new Date().toLocaleString()});
-    var ws2=XLSX.utils.json_to_sheet(summary); ws2["!cols"]=[{wch:22},{wch:24}];
-    var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"Data"); XLSX.utils.book_append_sheet(wb,ws2,"Summary");
+    var ws2=XLSX.utils.json_to_sheet(summary); ws2["!cols"]=[{wch:34},{wch:30}];
+    var exRows=ex.slice().sort(function(a,b){return (a.t||0)-(b.t||0);}).map(function(e){ return { Person:e.person||"", Activity:(ACTIVITIES[e.act]&&ACTIVITIES[e.act].label)||e.label||"Extra points", Points:ptsOf(e.points), "Assigned by":e.by||"Ronit", When:e.t?new Date(e.t).toLocaleString():"" }; });
+    var ws3=XLSX.utils.json_to_sheet(exRows.length?exRows:[{Person:"",Activity:"No extra points yet",Points:"","Assigned by":"",When:""}]); ws3["!cols"]=[{wch:14},{wch:30},{wch:8},{wch:12},{wch:20}];
+    var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"Data"); XLSX.utils.book_append_sheet(wb,ws2,"Summary"); XLSX.utils.book_append_sheet(wb,ws3,"Extra points");
     var out=XLSX.write(wb,{type:"array",bookType:"xlsx"});
     download("FruitAttraction2026_"+curTeam().name.replace(/\s/g,"")+"_"+new Date().toISOString().slice(0,10)+".xlsx", new Blob([out],{type:"application/octet-stream"}));
     toast("Excel exported");
-  }).catch(function(){ toast("Excel export needs a connection"); });
+  }).catch(function(e){ toast("Excel not created: "+((e&&e.message)||"check connection")); });
 }
 function exportCards(){ var src=companies().filter(function(c){ return rec(c.id).p; });
   if(!src.length){ toast("No business cards saved yet"); return; }
@@ -542,6 +551,76 @@ function exportCards(){ var src=companies().filter(function(c){ return rec(c.id)
     doc.save("FruitAttraction2026_"+curTeam().name.replace(/\s/g,"")+"_Cards_"+new Date().toISOString().slice(0,10)+".pdf");
     toast("Cards exported ("+items.length+")");
   }).catch(function(){ toast("Cards export needs a connection"); });
+}
+
+
+/* ===== Ronit: full export of all teams (after the event) ===== */
+function readOnce(tk,coll){ return new Promise(function(res,rej){ var done=false, un=null;
+  un=FB.onSnapshot(FB.collection(DB,"teams",TEAMS[tk].token,coll), function(snap){ if(done) return; done=true;
+      var out=[]; snap.forEach(function(d){ var o=d.data()||{}; o.id=d.id; out.push(o); }); setTimeout(function(){ try{un&&un();}catch(e){} },0); res(out); },
+    function(e){ if(done) return; done=true; rej(e); }); }); }
+function loadAllTeams(){ return Promise.all(RANK_ORDER.map(function(tk){
+  return Promise.all([readOnce(tk,"records"),readOnce(tk,"extra")]).then(function(r){ var recs={}; r[0].forEach(function(o){ recs[o.id]=o; }); return {tk:tk, recs:recs, extra:r[1]}; }); })); }
+function stOf(r){ return (r&&r.s&&STATUS[r.s])?r.s:"not_started"; }
+function exportAll(){ if(!DB){ toast("Offline - connect first"); return; }
+  toast("Collecting all teams...");
+  Promise.all([ import("https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs"), loadAllTeams() ]).then(function(res){ var XLSX=res[0], all=res[1];
+    var rows=[], worked=[], rank=[], people=[], extras=[];
+    all.forEach(function(T){ var team=TEAMS[T.tk], sp=0, xp=0, done=0, per={};
+      team.members.forEach(function(m){ per[m]={s:0,x:0,n:0}; });
+      team.companies.forEach(function(c){ var r=T.recs[String(c.id)]||{}; var k=stOf(r), st=STATUS[k];
+        var tr=(r.track==="new"?"New":r.track==="existing"?"Existing":"");
+        var row={ Team:team.name, Company:c.name, Hall:c.hall, Stand:c.stand, Country:c.country||"", Products:c.products||"",
+          "Customer type":tr, Status:st.label, Points:st.points, Email:c.email||"", Website:c.website||"", "Business card":r.p?"Yes":"",
+          "Worked by":r.u||"", "Updated at":r.t?new Date(r.t).toLocaleString():"", Notes:r.n||"" };
+        rows.push(row); sp+=st.points;
+        if(k!=="not_started"||r.n||r.p){ worked.push(row); }
+        if(k!=="not_started"){ done++; if(r.u){ per[r.u]=per[r.u]||{s:0,x:0,n:0}; per[r.u].s+=st.points; per[r.u].n++; } } });
+      T.extra.forEach(function(e){ var pv=ptsOf(e.points); xp+=pv; if(e.person){ per[e.person]=per[e.person]||{s:0,x:0,n:0}; per[e.person].x+=pv; }
+        extras.push({ Team:team.name, Person:e.person||"", Activity:(ACTIVITIES[e.act]&&ACTIVITIES[e.act].label)||e.label||"Extra points", Points:pv, When:e.t?new Date(e.t).toLocaleString():"" }); });
+      rank.push({ Team:team.name, "Sales points":sp, "Extra points":xp, "Total points":sp+xp, "Companies worked":done+" / "+team.companies.length });
+      Object.keys(per).forEach(function(m){ var q=per[m]; people.push({ Person:m, Team:team.name, "Leader":(m===team.leader?"Yes":""), "Sales points":q.s, "Extra points":q.x, "Total points":q.s+q.x, "Companies worked":q.n }); });
+    });
+    rank.sort(function(a,b){ return b["Total points"]-a["Total points"]; }); rank.forEach(function(r,i){ r.Position=i+1; });
+    people.sort(function(a,b){ return b["Total points"]-a["Total points"]; });
+    worked.sort(function(a,b){ return b.Points-a.Points || (a.Team<b.Team?-1:1); });
+    extras.sort(function(a,b){ return a.Team<b.Team?-1:a.Team>b.Team?1:0; });
+    var wb=XLSX.utils.book_new();
+    function add(name,data,cols,empty){ var ws=XLSX.utils.json_to_sheet(data.length?data:[empty]); ws["!cols"]=cols.map(function(w){return{wch:w};}); XLSX.utils.book_append_sheet(wb,ws,name); }
+    var cc=[9,32,6,10,14,26,13,20,7,26,20,9,12,20,40];
+    add("Ranking",rank.map(function(r){ return {Position:r.Position,Team:r.Team,"Total points":r["Total points"],"Sales points":r["Sales points"],"Extra points":r["Extra points"],"Companies worked":r["Companies worked"]}; }),[9,10,12,12,12,16],{});
+    add("People",people,[12,10,8,12,12,12,16],{});
+    add("Worked contacts",worked,cc,{Team:"",Company:"Nothing worked yet"});
+    add("All companies",rows,cc,{});
+    add("Extra points",extras,[10,12,34,8,20],{Team:"",Person:"",Activity:"No extra points"});
+    var out=XLSX.write(wb,{type:"array",bookType:"xlsx"});
+    download("FruitAttraction2026_ALL_TEAMS_"+new Date().toISOString().slice(0,10)+".xlsx", new Blob([out],{type:"application/octet-stream"}));
+    toast("Export ready: "+worked.length+" worked contacts");
+  }).catch(function(e){ toast("Export failed: "+((e&&(e.code||e.message))||"check connection")); });
+}
+function exportAllCards(){ if(!DB){ toast("Offline - connect first"); return; }
+  toast("Collecting business cards...");
+  loadAllTeams().then(function(all){ var items=[];
+    all.forEach(function(T){ TEAMS[T.tk].companies.forEach(function(c){ var r=T.recs[String(c.id)]; if(r&&r.p) items.push({tk:T.tk,c:c,r:r}); }); });
+    if(!items.length){ toast("No business cards saved by any team"); return null; }
+    return Promise.all([ import("https://cdn.jsdelivr.net/npm/jspdf@2.5.2/+esm"),
+      Promise.all(items.map(function(it){ return FB.getDoc(FB.doc(DB,"teams",TEAMS[it.tk].token,"photos",String(it.c.id))).then(function(sn){ it.img=sn.exists()?(sn.data().d||null):null; return it; }).catch(function(){ it.img=null; return it; }); })) ])
+    .then(function(res){ var jsPDF=res[0].jsPDF||res[0].default; var list=res[1].filter(function(x){return x.img;});
+      if(!list.length){ toast("No card images found"); return; }
+      var doc=new jsPDF({unit:"mm",format:"a4"}); var pw=210,ph=297,mm=14,y=mm;
+      doc.setFont("helvetica","bold"); doc.setFontSize(16); doc.setTextColor(30,77,43); doc.text("Fruit Attraction 2026 - All teams - Business cards",mm,y+2); y+=8;
+      doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(120,120,120); doc.text(list.length+" cards  ·  "+new Date().toLocaleDateString(),mm,y+2); y+=8;
+      list.forEach(function(it){ var c=it.c, r=it.r; if(y>ph-70){ doc.addPage(); y=mm; }
+        doc.setDrawColor(220,230,207); doc.line(mm,y,pw-mm,y); y+=6;
+        doc.setFont("helvetica","bold"); doc.setFontSize(12); doc.setTextColor(30,77,43); doc.text(String(c.name),mm,y); y+=5;
+        doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(70,70,70);
+        doc.text(TEAMS[it.tk].name+" · Hall "+c.hall+" · Stand "+c.stand+" · "+STATUS[stOf(r)].label+(r.u?" · by "+r.u:""),mm,y); y+=4.5;
+        if(r.n){ doc.setTextColor(90,90,90); var nn=doc.splitTextToSize("Notes: "+r.n,pw-2*mm); doc.text(nn,mm,y); y+=nn.length*4; }
+        y+=2; try{ var pr=doc.getImageProperties(it.img); var iw=pw-2*mm; var ih=iw*pr.height/pr.width; if(ih>95){ih=95;iw=ih*pr.width/pr.height;}
+          if(y+ih>ph-mm){ doc.addPage(); y=mm; } doc.addImage(it.img,"JPEG",mm,y,iw,ih); y+=ih+8; }catch(e){ y+=4; } });
+      doc.save("FruitAttraction2026_ALL_TEAMS_Cards_"+new Date().toISOString().slice(0,10)+".pdf"); toast("Cards PDF ready: "+list.length);
+    });
+  }).catch(function(e){ toast("Cards export failed: "+((e&&(e.code||e.message))||"check connection")); });
 }
 
 /* ===== Messages ===== */
@@ -709,7 +788,7 @@ function donut(data){ var total=data.reduce(function(a,d){return a+d.v;},0); if(
 
 /* ===== Render ===== */
 window.goTab=function(e,t){ if(e){e.stopPropagation();e.preventDefault();} state.tab=t; render(); window.scrollTo(0,0); };
-var APP_VERSION="v13 · 06/10";
+var APP_VERSION="v15 · 08/10";
 var app;
 function render(){
   app=app||document.getElementById("app");
@@ -916,6 +995,8 @@ function scorerLayout(){
       +'<input id="screason" class="cinput cgrow" placeholder="reason (optional)"/>'
       +'<button class="btn primary" data-action="assign-custom">Add</button></div>'
     +'</section>'
+    +'<section class="card"><div class="ctitle">📦 Final export — all teams</div><div class="muted small pad0">One Excel with every team: ranking, people, worked contacts with notes, all companies and extra points.</div>'
+      +'<div class="actions2" style="margin-top:8px"><button class="btn primary" data-action="export-all">⬇ Export all teams</button><button class="btn ghost" data-action="export-all-cards">⬇ All business cards</button></div></section>'
     +rankCard()
     +topIndCard()
     +'<section class="card"><div class="ctitle">Recent — '+esc(TEAMS[state.scTeam].name)+'</div><div class="clist">'+log+'</div></section>'
@@ -960,6 +1041,8 @@ document.body.addEventListener("click", function(e){ var el=findAction(e.target)
   else if(a==="fhall"){ state.fHall=el.getAttribute("data-val"); render(); }
   else if(a==="fstatus"){ state.fStatus=el.getAttribute("data-val"); render(); }
   else if(a==="xlsx"){ exportXLSX(); }
+  else if(a==="export-all"){ if(state.user&&state.user.scorer) exportAll(); }
+  else if(a==="export-all-cards"){ if(state.user&&state.user.scorer) exportAllCards(); }
   else if(a==="cards"){ exportCards(); }
   else if(a==="rankexp"){ var tk=el.getAttribute("data-tk"); state.rankOpen = (state.rankOpen===tk?null:tk); render(); }
   else if(a==="assign"){ var k=el.getAttribute("data-k"); if(!state.scPerson){ toast("Pick a person"); return; }
